@@ -6,7 +6,7 @@ import {
   type AllocationRepository,
   type CreateAllocationSnapshotInput,
   type CreateSnapshotOutcome,
-} from './allocationRepository';
+} from './allocationRepository.js';
 
 interface AllocationRow {
   id: number;

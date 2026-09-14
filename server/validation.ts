@@ -1,4 +1,4 @@
-import { ApiError } from './errors';
+import { ApiError } from './errors.js';
 
 const ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 

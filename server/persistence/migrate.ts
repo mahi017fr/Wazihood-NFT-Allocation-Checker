@@ -11,9 +11,9 @@
  * No production data is ever dropped or altered.
  */
 
-import { createAllocationRepository } from './index';
-import { PostgresAllocationRepository } from './postgresAllocationRepository';
-import { config } from '../config';
+import { createAllocationRepository } from './index.js';
+import { PostgresAllocationRepository } from './postgresAllocationRepository.js';
+import { config } from '../config.js';
 
 async function main(): Promise<void> {
   const store = config.persistence.store;

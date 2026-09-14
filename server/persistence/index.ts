@@ -1,13 +1,13 @@
-import { config } from '../config';
-import { PostgresAllocationRepository, createNeonPostgresPool } from './postgresAllocationRepository';
-import type { AllocationRepository } from './allocationRepository';
+import { config } from '../config.js';
+import { PostgresAllocationRepository, createNeonPostgresPool } from './postgresAllocationRepository.js';
+import type { AllocationRepository } from './allocationRepository.js';
 
 // node:sqlite only ships with Node >= 22.5. It is loaded lazily (and guarded)
 // so a serverless runtime (e.g. Vercel) without node:sqlite can still run the
 // production postgres store without crashing at import time.
-let sqliteRepositoryCtor: typeof import('./sqliteAllocationRepository').SqliteAllocationRepository | null = null;
+let sqliteRepositoryCtor: typeof import('./sqliteAllocationRepository.js').SqliteAllocationRepository | null = null;
 try {
-  sqliteRepositoryCtor = (await import('./sqliteAllocationRepository')).SqliteAllocationRepository;
+  sqliteRepositoryCtor = (await import('./sqliteAllocationRepository.js')).SqliteAllocationRepository;
 } catch {
   sqliteRepositoryCtor = null;
 }

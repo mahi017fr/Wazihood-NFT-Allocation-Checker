@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Vercel-compatible local Lambda smoke build output
+.smoke-lambda/
+
 # Environment / secrets
 .env
 .env.local

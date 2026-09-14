@@ -12,6 +12,7 @@
     "test": "tsx --test tests/allocation-engine.test.ts tests/validation.test.ts tests/allocation-snapshot.test.ts tests/allocation-check-service.test.ts tests/errors-envelope.test.ts tests/rpc-errors.test.ts tests/wazi-nft-service.test.ts tests/express-route-error-survival.test.ts tests/nft-contract-not-deployed.test.tsx tests/not-eligible-result.test.tsx tests/postgres-allocation-repository.test.ts tests/persistence-config.test.ts",
     "clean": "rm -rf dist server.js",
     "migrate": "tsx server/persistence/migrate.ts",
+    "smoke": "node scripts/vercel-lambda-smoke.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

@@ -12,7 +12,7 @@
  */
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { buildApp } from '../server/app';
+import { buildApp } from '../server/app.js';
 
 const server = createServer(buildApp());
 

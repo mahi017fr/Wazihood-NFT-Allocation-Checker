@@ -1,10 +1,10 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { config, isNftContractConfigured, isDataProviderConfigured } from './config';
-import { toApiErrorBody, toApiSuccessBody, ApiError } from './errors';
-import { getAllocationCheckService } from './services/allocationCheckService';
-import { getAllocationRepository } from './persistence/index';
+import { config, isNftContractConfigured, isDataProviderConfigured } from './config.js';
+import { toApiErrorBody, toApiSuccessBody, ApiError } from './errors.js';
+import { getAllocationCheckService } from './services/allocationCheckService.js';
+import { getAllocationRepository } from './persistence/index.js';
 
 export interface AppOptions {
   allocationCheckService?: { check(walletAddress: string): Promise<unknown> };

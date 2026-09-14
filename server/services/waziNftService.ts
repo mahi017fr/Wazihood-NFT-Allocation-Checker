@@ -1,6 +1,6 @@
-import { ApiError } from '../errors';
-import { jsonRpcCall } from '../rpc';
-import { config, isNftContractConfigured } from '../config';
+import { ApiError } from '../errors.js';
+import { jsonRpcCall } from '../rpc.js';
+import { config, isNftContractConfigured } from '../config.js';
 
 export interface WaziNftServiceDeps {
   rpcUrl: string;

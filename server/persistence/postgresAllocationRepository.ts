@@ -29,7 +29,7 @@ import {
   type AllocationRepository,
   type CreateAllocationSnapshotInput,
   type CreateSnapshotOutcome,
-} from './allocationRepository';
+} from './allocationRepository.js';
 
 export const POSTGRES_SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS allocation_snapshots (

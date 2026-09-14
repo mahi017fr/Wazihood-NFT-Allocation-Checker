@@ -1,11 +1,11 @@
-import { config } from '../config';
-import { ApiError } from '../errors';
-import { validateWalletAddress } from '../validation';
-import { evaluateAllocation, REQUIRED_TRANSACTION_REASON, type AllocationConfig } from './allocationEngine';
-import { getRobinhoodChainService, type RobinhoodChainService } from './robinhoodChainService';
-import { getWaziNftService, type WaziNftService } from './waziNftService';
-import type { AllocationRepository, AllocationRecord } from '../persistence/allocationRepository';
-import { getAllocationRepository } from '../persistence/index';
+import { config } from '../config.js';
+import { ApiError } from '../errors.js';
+import { validateWalletAddress } from '../validation.js';
+import { evaluateAllocation, REQUIRED_TRANSACTION_REASON, type AllocationConfig } from './allocationEngine.js';
+import { getRobinhoodChainService, type RobinhoodChainService } from './robinhoodChainService.js';
+import { getWaziNftService, type WaziNftService } from './waziNftService.js';
+import type { AllocationRepository, AllocationRecord } from '../persistence/allocationRepository.js';
+import { getAllocationRepository } from '../persistence/index.js';
 
 export interface AllocationCheckResponse {
   walletAddress: string;
