@@ -1,0 +1,43 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port=3000 --host=0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "tsx server/index.ts",
+    "start": "tsx server/index.ts",
+    "test": "tsx --test tests/allocation-engine.test.ts tests/validation.test.ts tests/allocation-snapshot.test.ts tests/allocation-check-service.test.ts tests/errors-envelope.test.ts tests/rpc-errors.test.ts tests/wazi-nft-service.test.ts tests/express-route-error-survival.test.ts tests/nft-contract-not-deployed.test.tsx tests/not-eligible-result.test.tsx tests/postgres-allocation-repository.test.ts tests/persistence-config.test.ts",
+    "clean": "rm -rf dist server.js",
+    "migrate": "tsx server/persistence/migrate.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@neondatabase/serverless": "^1.1.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@types/canvas-confetti": "^1.9.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "canvas-confetti": "^1.9.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "pg-mem": "^3.0.14",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  }
+}

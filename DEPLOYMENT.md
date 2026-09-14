@@ -1,0 +1,165 @@
+# Wazihood $WAZI Allocation Checker — Production Deployment (Vercel)
+
+This guide deploys the checker with a **hosted PostgreSQL database (Neon)** so
+allocation snapshots survive cold starts, redeploys, and all concurrent
+serverless instances. The same wallet always receives the same finalized
+Season 01 allocation.
+
+## Architecture recap
+
+| Layer | Production (Vercel) | Local development |
+| --- | --- | --- |
+| Frontend | `dist/` from `npm run build` served by Vercel edge | Vite dev server |
+| API | `api/index.ts` serverless function (Express) | `npm run server` |
+| Persistence | `ALLOCATION_STORE=postgres` → Neon PostgreSQL | `ALLOCATION_STORE=sqlite` |
+
+- `server/persistence/postgresAllocationRepository.ts` implements the same
+  `AllocationRepository` interface as the SQLite store; the service layer never
+  knows which store is active.
+- Store selection: `ALLOCATION_STORE=postgres` uses `DATABASE_URL`;
+  `ALLOCATION_STORE=sqlite` uses `ALLOCATION_DB_PATH`.
+- Database-inflicted guarantees:
+  - `UNIQUE(wallet_address, season, network)` — a wallet can only ever receive
+    one Season 01 snapshot.
+  - Insert-then-read-on-conflict — simultaneous requests for the same wallet
+    both return the identical allocation.
+  - `SELECT ... FOR UPDATE` on the season's pool-ledger row — the 30,000,000,000
+    $WAZI pool is never oversubscribed, even across concurrent instances.
+
+## Required Vercel environment variables
+
+| Variable | Value |
+| --- | --- |
+| `ALLOCATION_STORE` | `postgres` |
+| `DATABASE_URL` | your Neon connection string, e.g. `postgresql://user:password@ep-xxx.region.aws.neon.tech/wazihood?sslmode=require` |
+| `WAZI_NFT_CONTRACT_ADDRESS` | the Wazihood NFT contract address (leave empty until known — the API returns a clear config error, never fake data) |
+| `ALCHEMY_URL` **or** `ALCHEMY_API_KEY` | Robinhood Chain data provider (indexed transaction/nonce queries) |
+| `SEASON01_NAME` | `Season 01` |
+| `SEASON01_TOTAL_POOL` | `30000000000` |
+| `SEASON01_ALREADY_ALLOCATED` | `0` unless tokens were already committed outside this system |
+| `MIN_ELIGIBLE_ALLOCATION` / `MAX_ELIGIBLE_ALLOCATION` / `MAX_ACTIVITY_ALLOCATION` | `1`, `100000`, `30000` |
+| `ACTIVITY_SCORE_TIERS_JSON` | `{"1":10,"5":25,"10":40,"25":55,"50":70,"100":80,"250":92,"500":100}` |
+| `NFT_HOLDER_BONUS_ALLOCATION` / `NFT_HOLDER_BONUS_PERCENT` | `0` / `20` |
+| `ROBINHOOD_CHAIN_ID` | `4663` |
+| `ROBINHOOD_RPC_URL` | `https://rpc.mainnet.chain.robinhood.com` |
+
+`DATABASE_URL`, the Alchemy key, and any RPC secrets are **server-side only**.
+They are never exposed through `/api/*` or bundled into the frontend.
+
+## 1. Create the Neon PostgreSQL database
+
+1. Sign up / log in at https://neon.tech and create a new project (any region,
+   e.g. `us-east-1`).
+2. Create a database (default `neondb` is fine; rename to `wazihood` if you
+   prefer).
+3. From the dashboard copy the **connection string** for the `Pooled`
+   connection (it is used by the serverless driver). It looks like:
+   `postgresql://user:password@ep-xxx.region.aws.neon.tech/wazihood?sslmode=require`
+4. This URL is the value of `DATABASE_URL`. Keep it secret — never commit it.
+
+## 2. Set the connection string locally / in CI (optional)
+
+For running the migration from your machine, export it once:
+
+```bash
+export DATABASE_URL="postgresql://user:password@ep-xxx.region.aws.neon.tech/wazihood?sslmode=require"
+export ALLOCATION_STORE=postgres
+```
+
+## 3. Run the database migration
+
+The migration is **idempotent** (`CREATE TABLE IF NOT EXISTS`) and never drops
+or alters production data. It creates:
+
+- `allocation_snapshots` — one row per finalized allocation with a
+  `UNIQUE(wallet_address, season, network)` constraint.
+- `allocation_pool_ledger` — a per-season ledger row whose lock serializes pool
+  budget consumption.
+
+Run it:
+
+```bash
+npm install
+npm run migrate
+```
+
+Expected output:
+
+```
+[migrate] PostgreSQL schema ready on "ep-xxx.region.aws.neon.tech" (store=postgres, table=allocation_snapshots, ledger=allocation_pool_ledger)
+[migrate] done
+```
+
+> Local-only note: with `ALLOCATION_STORE=sqlite` (default), `npm run migrate`
+> initializes the on-disk `data/allocations.sqlite` instead.
+
+## 4. Set Vercel environment variables
+
+In the Vercel project dashboard (`Settings → Environment Variables`), add
+**every** variable from the table above for the `Production` environment.
+Set `ALLOCATION_STORE=postgres` and `DATABASE_URL` to your Neon URL.
+
+## 5. Deploy
+
+```bash
+vercel --prod
+```
+
+`vercel.json` is already configured:
+
+- `buildCommand: npm run build` → builds the Vite frontend into `dist/`.
+- `outputDirectory: dist` → `dist/` is served statically by Vercel.
+- `rewrites: /api/(.*) → /api/index` → all API traffic goes to the Express
+  serverless function in `api/index.ts`.
+
+## 6. Verify `/api/health`
+
+```bash
+curl https://<your-vercel-url>/api/health
+```
+
+Expected:
+
+```json
+{ "success": true, "data": { "status": "ok", "network": "Robinhood Chain",
+  "chainId": 4663, "nftContractConfigured": true, "dataProviderConfigured": true,
+  "nftStandard": "ERC721" } }
+```
+
+## 7. Verify a wallet allocation
+
+```bash
+curl -X POST https://<your-vercel-url>/api/allocation/check \
+  -H "Content-Type: application/json" \
+  -d '{"walletAddress":"0x71C44F3a9B3f6b4E90B04aF5796E25bB24F88F29"}'
+```
+
+An eligible wallet returns `allocationSource: "new_calculation"` on its **first**
+check.
+
+## 8. Verify repeat submission returns the snapshot
+
+Run the same `curl` again. The response must return the **exact same
+allocation** with `allocationSource: "snapshot"` — no recalculation, no matter
+how the wallet's activity or NFT ownership changed.
+
+## 9. Verify pool / metrics
+
+```bash
+curl https://<your-vercel-url>/api/metrics
+```
+
+```json
+{ "success": true, "data": { "season": "Season 01", "network": "Robinhood Chain",
+  "allocationPool": 30000000000, "amountAllocated": 0, "remainingPool": 30000000000,
+  "totalWaziNftHolders": null, "totalWaziNftSupply": null, "totalIndexedTransactions": null } }
+```
+
+`totalWaziNftHolders` / `totalWaziNftSupply` / `totalIndexedTransactions` are
+`null` wherever no real indexer is configured — they are never fabricated.
+
+## Rollback / local development
+
+Production persistence lives in Neon; nothing is stored on the Vercel
+filesystem. To switch back to a local store, set
+`ALLOCATION_STORE=sqlite` and run `npm run server`.
