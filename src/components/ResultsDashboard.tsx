@@ -149,7 +149,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
 
             {/* Wojak Image */}
             <img
-              src="/src/assets/images/wazi_results_left_1789332144341.jpg"
+              src="/images/wazi_results_left_1789332144341.jpg"
               alt="Wojak Believer"
               referrerPolicy="no-referrer"
               className="w-full h-auto object-contain mix-blend-multiply"
@@ -289,7 +289,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
             </span>
 
             <img
-              src="/src/assets/images/wazi_results_right_1789332158917.jpg"
+              src="/images/wazi_results_right_1789332158917.jpg"
               alt="Victorious Wojak Celebrating"
               referrerPolicy="no-referrer"
               className="w-full h-auto object-contain mix-blend-multiply"
@@ -618,7 +618,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
               ♫
             </span>
             <img
-              src="/src/assets/images/wazi_headphones_1789325468440.jpg"
+              src="/images/wazi_headphones_1789325468440.jpg"
               alt="Headphone Wojak"
               referrerPolicy="no-referrer"
               className="w-24 h-auto object-contain mix-blend-multiply mt-4"
@@ -634,7 +634,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
         <div className="flex items-center space-x-3">
           <div className="w-24 h-24 shrink-0">
             <img
-              src="/src/assets/images/wazi_desk_1789325482918.jpg"
+              src="/images/wazi_desk_1789325482918.jpg"
               alt="Wojak at desk"
               referrerPolicy="no-referrer"
               className="w-full h-full object-contain mix-blend-multiply"
@@ -665,7 +665,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
         <div className="flex items-center space-x-3">
           <div className="w-24 h-24 shrink-0">
             <img
-              src="/src/assets/images/wazi_sunrise_wojak_1789331809265.jpg"
+              src="/images/wazi_sunrise_wojak_1789331809265.jpg"
               alt="Wojak looking at sunrise"
               referrerPolicy="no-referrer"
               className="w-full h-full object-contain mix-blend-multiply"

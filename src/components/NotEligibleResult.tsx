@@ -63,7 +63,7 @@ export const NotEligibleResult: React.FC<NotEligibleResultProps> = ({ data, open
             </div>
 
             <img
-              src="/src/assets/images/wazi_results_left_1789332144341.jpg"
+              src="/images/wazi_results_left_1789332144341.jpg"
               alt="Wojak still keeping hope"
               referrerPolicy="no-referrer"
               className="w-full h-auto object-contain mix-blend-multiply"
@@ -153,7 +153,7 @@ export const NotEligibleResult: React.FC<NotEligibleResultProps> = ({ data, open
               TOO.
             </span>
             <img
-              src="/src/assets/images/wazi_results_right_1789332158917.jpg"
+              src="/images/wazi_results_right_1789332158917.jpg"
               alt="Wojak celebrating the next opportunity"
               referrerPolicy="no-referrer"
               className="w-full h-auto object-contain mix-blend-multiply"

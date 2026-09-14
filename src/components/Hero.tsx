@@ -74,7 +74,7 @@ export const Hero: React.FC<HeroProps> = ({
           <div className="hidden lg:flex flex-col items-center justify-start w-[240px] xl:w-[280px] shrink-0 -mt-8">
             <div className="relative w-full">
               <img
-                src="/src/assets/images/wazi_hero_left_1789325446988.jpg"
+                src="/images/wazi_hero_left_1789325446988.jpg"
                 alt="Wojak still believing"
                 referrerPolicy="no-referrer"
                 className="w-full h-auto object-contain filter contrast-105 mix-blend-multiply"
@@ -231,7 +231,7 @@ export const Hero: React.FC<HeroProps> = ({
                   ✦
                 </span>
                 <img
-                  src="/src/assets/images/wazi_confident_wojak_1789326265753.jpg"
+                  src="/images/wazi_confident_wojak_1789326265753.jpg"
                   alt="Confident Wojak"
                   referrerPolicy="no-referrer"
                   className="w-full h-auto object-contain mix-blend-multiply"
@@ -253,7 +253,7 @@ export const Hero: React.FC<HeroProps> = ({
                   MORE<br />THAN<br />JUST<br />A MEME
                 </span>
                 <img
-                  src="/src/assets/images/wazi_desk_1789325482918.jpg"
+                  src="/images/wazi_desk_1789325482918.jpg"
                   alt="Wojak typing at computer with WAZI coffee mug"
                   referrerPolicy="no-referrer"
                   className="w-full h-auto object-contain mix-blend-multiply"

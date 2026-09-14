@@ -22,7 +22,7 @@ export const CommunitySection: React.FC = () => {
               {/* Inner Photo */}
               <div className="w-full aspect-square bg-white rounded-xs flex items-center justify-center overflow-hidden border border-zinc-200">
                 <img 
-                  src="/src/assets/images/wazi_hoodie_wojak_1789326141976.jpg"
+                  src="/images/wazi_hoodie_wojak_1789326141976.jpg"
                   alt="Wazihood Community Wojak"
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-contain filter contrast-105"
@@ -50,7 +50,7 @@ export const CommunitySection: React.FC = () => {
               {/* Inner Photo */}
               <div className="w-full aspect-square bg-zinc-100 rounded-xs flex items-center justify-center overflow-hidden border border-zinc-200">
                 <img 
-                  src="/src/assets/images/wazi_hero_left_1789325446988.jpg"
+                  src="/images/wazi_hero_left_1789325446988.jpg"
                   alt="Classic Wojak Community Member"
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-contain filter contrast-110"
@@ -106,7 +106,7 @@ export const CommunitySection: React.FC = () => {
             
             {/* Night City Illustration */}
             <img 
-              src="/src/assets/images/wazi_night_sky_1789325513353.jpg"
+              src="/images/wazi_night_sky_1789325513353.jpg"
               alt="Wojak standing on balcony overlooking city at night"
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover filter contrast-110"
