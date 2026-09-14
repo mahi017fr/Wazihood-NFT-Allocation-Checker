@@ -58,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onHomeClick }) => {
 
           {/* 2. Opensea */}
           <a
-            href="https://opensea.io"
+            href="https://opensea.io/collection/wazihoodmint/"
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs sm:text-sm font-sans font-light tracking-widest text-zinc-400 hover:text-zinc-800 transition-colors bg-transparent p-0"
@@ -68,7 +68,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onHomeClick }) => {
 
           {/* 3. twitter */}
           <a
-            href="https://x.com"
+            href="https://x.com/WaziHood"
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs sm:text-sm font-sans font-light tracking-widest text-zinc-400 hover:text-zinc-800 transition-colors bg-transparent p-0"
