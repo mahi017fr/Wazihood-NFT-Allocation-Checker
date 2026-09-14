@@ -54,18 +54,16 @@ export function buildApp(options: AppOptions = {}): express.Express {
     );
   });
 
-  // Real Season 01 / pool metrics. Values that cannot be obtained reliably
+  // Pool metrics. Values that cannot be obtained reliably
   // from the configured indexer/provider are returned as null - never faked.
   app.get('/api/metrics', async (req, res) => {
-    const season = config.allocation.season;
     const network = config.network.name;
     const repository = getAllocationRepository();
-    const pool = config.tokenomics.season1Pool;
+    const pool = config.tokenomics.allocationPool;
     const amountAllocated =
-      (await repository.totalAllocated(season, network)) + config.tokenomics.alreadyAllocated;
+      (await repository.totalAllocated(network)) + config.tokenomics.alreadyAllocated;
     res.json(
       toApiSuccessBody({
-        season,
         network,
         allocationPool: pool,
         amountAllocated,

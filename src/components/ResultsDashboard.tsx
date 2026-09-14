@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AllocationCheckResponse, NetworkMetrics } from '../types';
 import { formatAllocation, formatNumber, truncateAddress } from '../utils/format';
-import { ArrowLeft, Copy, Check, Calendar, Activity, Shield, Network, Coins, ArrowUpRight } from 'lucide-react';
+import { ArrowLeft, Copy, Check, Activity, Shield, Network, Coins, ArrowUpRight } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface ResultsDashboardProps {
@@ -97,7 +97,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
       {/* SECTION 1: HEADER HEADLINE */}
       <div className="text-center space-y-2">
         <div className="text-xs font-mono-code font-bold tracking-[0.2em] text-zinc-500 uppercase">
-          ${'WAZI'} · {data.season}
+          ${'WAZI'}
         </div>
 
         {/* ALLOCATION FOUND / NOT ELIGIBLE with 3 green radiating rays */}
@@ -123,7 +123,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
 
         <div className="relative inline-block text-xs sm:text-sm text-zinc-600 font-sans max-w-lg mx-auto pt-1">
           {eligible
-            ? 'Your Season 01 $WAZI allocation based on verified Robinhood Chain transaction activity. Wazi NFT holders receive a bonus on top.'
+            ? 'Your $WAZI allocation based on verified Robinhood Chain transaction activity. Wazi NFT holders receive a bonus on top.'
             : 'At least 1 Robinhood Chain transaction is required for a $WAZI allocation.'}
           {/* Subtle green brush line */}
           <div className="w-44 h-1 bg-[#00c805]/70 rounded-full mx-auto mt-1.5" />
@@ -207,9 +207,9 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
             <div className="text-xs font-mono-code text-zinc-500 font-medium mt-2">
               {eligible
                 ? data.allocationSource === 'snapshot'
-                  ? 'Season 01 snapshot · finalized'
-                  : 'Season 01 allocation · newly calculated'
-                : 'Not eligible for the Season 01 allocation'}
+                  ? 'Allocation snapshot · finalized'
+                  : 'Allocation · newly calculated'
+                : 'Not eligible for the allocation'}
             </div>
           </div>
 
@@ -269,7 +269,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
             <span className="text-xl">{eligible ? '🎉' : '🔒'}</span>
             <div className="text-xs">
               <div className="font-bold text-zinc-900">
-                {eligible ? 'You are eligible for Season 01!' : 'Not eligible for Season 01.'}
+                {eligible ? 'You are eligible!' : 'Not eligible.'}
               </div>
               <div className="text-[11px] text-zinc-500">
                 {eligible
@@ -473,18 +473,22 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
               <span className="font-mono-code font-bold text-zinc-900">Robinhood Chain</span>
             </div>
 
-            {/* Season */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <div className="w-6 h-6 rounded-full border border-zinc-200 flex items-center justify-center text-zinc-600">
-                  <Calendar className="w-3.5 h-3.5" />
+            {/* Pool */}
+            {metrics && (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="w-6 h-6 rounded-full border border-zinc-200 flex items-center justify-center text-zinc-600">
+                    <Coins className="w-3.5 h-3.5" />
+                  </div>
+                  <span>Allocation Pool</span>
                 </div>
-                <span>Season</span>
+                <span className="font-mono-code font-bold text-zinc-900">
+                  {formatNumber(metrics.allocationPool)} $WAZI
+                </span>
               </div>
-              <span className="font-mono-code font-bold text-zinc-900">{data.season}</span>
-            </div>
+            )}
 
-            {/* Season 01 pool (real metrics) */}
+            {/* Already Allocated */}
             {metrics && (
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
@@ -585,7 +589,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
                 <span className="w-5 h-5 rounded-full bg-[#00c805] text-white flex items-center justify-center text-[10px]">
                   ✓
                 </span>
-                <span>Season 01 allocation snapshot finalized</span>
+                <span>Allocation snapshot finalized</span>
               </div>
 
               {/* Step 3: Distribution */}
@@ -593,7 +597,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
                 <span className="w-5 h-5 rounded-full border border-zinc-300 text-zinc-400 flex items-center justify-center text-[10px]">
                   ◷
                 </span>
-                <span>Season 01 distribution</span>
+                <span>Distribution</span>
               </div>
 
               {/* Step 4: Discord / X */}
@@ -657,7 +661,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
           {/* Green underline stroke */}
           <div className="w-36 h-1 bg-[#00c805] rounded-full mx-auto my-2" />
           <div className="text-[10px] font-mono-code text-zinc-400 uppercase tracking-[0.2em]">
-            WAZIHOOD · {data.season} · $WAZI
+            WAZIHOOD · ROBINHOOD CHAIN · $WAZI
           </div>
         </div>
 

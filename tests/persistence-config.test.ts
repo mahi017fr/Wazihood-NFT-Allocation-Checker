@@ -15,7 +15,7 @@ const { createAllocationRepository } = await import('../server/persistence/index
 const { PostgresAllocationRepository } = await import('../server/persistence/postgresAllocationRepository');
 const { SqliteAllocationRepository } = await import('../server/persistence/sqliteAllocationRepository');
 const { buildApp } = await import('../server/app');
-const { ALLOCATION_SEASON, ALLOCATION_NETWORK } = await import('../server/persistence/allocationRepository');
+const { ALLOCATION_NETWORK } = await import('../server/persistence/allocationRepository');
 
 const WALLET = '0x71c44f3a9b3f6b4e90b04af5796e25bb24f88f29';
 
@@ -75,7 +75,6 @@ test('12: sqlite local store still works when selected', async () => {
   const outcome = await repo.createAllocationSnapshot(
     {
       walletAddress: WALLET,
-      season: ALLOCATION_SEASON,
       network: ALLOCATION_NETWORK,
       allocation: 18_500,
       transactionCountAtSnapshot: 42,
@@ -84,11 +83,11 @@ test('12: sqlite local store still works when selected', async () => {
       activityScore: 78,
       nftBonus: 2_000,
     },
-    30_000_000_000,
+    300_000_000,
   );
   assert.equal(outcome.status, 'created');
-  assert.equal(await repo.countAllocations(ALLOCATION_SEASON, ALLOCATION_NETWORK), 1);
-  const found = await repo.findByWallet(WALLET.toUpperCase(), ALLOCATION_SEASON, ALLOCATION_NETWORK);
+  assert.equal(await repo.countAllocations(ALLOCATION_NETWORK), 1);
+  const found = await repo.findByWallet(WALLET.toUpperCase(), ALLOCATION_NETWORK);
   assert.ok(found, 'case-normalized lookup must work in sqlite mode');
   assert.equal(found.allocation, 18_500);
   await repo.close();

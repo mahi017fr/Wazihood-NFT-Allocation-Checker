@@ -3,7 +3,7 @@
 This guide deploys the checker with a **hosted PostgreSQL database (Neon)** so
 allocation snapshots survive cold starts, redeploys, and all concurrent
 serverless instances. The same wallet always receives the same finalized
-Season 01 allocation.
+allocation.
 
 ## Architecture recap
 
@@ -19,11 +19,11 @@ Season 01 allocation.
 - Store selection: `ALLOCATION_STORE=postgres` uses `DATABASE_URL`;
   `ALLOCATION_STORE=sqlite` uses `ALLOCATION_DB_PATH`.
 - Database-inflicted guarantees:
-  - `UNIQUE(wallet_address, season, network)` — a wallet can only ever receive
-    one Season 01 snapshot.
+  - `UNIQUE(wallet_address, network)` — a wallet can only ever receive
+    one allocation snapshot.
   - Insert-then-read-on-conflict — simultaneous requests for the same wallet
     both return the identical allocation.
-  - `SELECT ... FOR UPDATE` on the season's pool-ledger row — the 30,000,000,000
+  - `SELECT ... FOR UPDATE` on the network's pool-ledger row — the 300,000,000
     $WAZI pool is never oversubscribed, even across concurrent instances.
 
 ## Required Vercel environment variables
@@ -34,9 +34,9 @@ Season 01 allocation.
 | `DATABASE_URL` | your Neon connection string, e.g. `postgresql://user:password@ep-xxx.region.aws.neon.tech/wazihood?sslmode=require` |
 | `WAZI_NFT_CONTRACT_ADDRESS` | the Wazihood NFT contract address (leave empty until known — the API returns a clear config error, never fake data) |
 | `ALCHEMY_URL` **or** `ALCHEMY_API_KEY` | Robinhood Chain data provider (indexed transaction/nonce queries) |
-| `SEASON01_NAME` | `Season 01` |
-| `SEASON01_TOTAL_POOL` | `30000000000` |
-| `SEASON01_ALREADY_ALLOCATED` | `0` unless tokens were already committed outside this system |
+| `TOTAL_WAZI_SUPPLY` | `1000000000` |
+| `ALLOCATION_POOL` | `300000000` |
+| `ALREADY_ALLOCATED` | `0` unless tokens were already committed outside this system |
 | `MIN_ELIGIBLE_ALLOCATION` / `MAX_ELIGIBLE_ALLOCATION` / `MAX_ACTIVITY_ALLOCATION` | `1`, `100000`, `30000` |
 | `ACTIVITY_SCORE_TIERS_JSON` | `{"1":10,"5":25,"10":40,"25":55,"50":70,"100":80,"250":92,"500":100}` |
 | `NFT_HOLDER_BONUS_ALLOCATION` / `NFT_HOLDER_BONUS_PERCENT` | `0` / `20` |
@@ -68,13 +68,18 @@ export ALLOCATION_STORE=postgres
 
 ## 3. Run the database migration
 
-The migration is **idempotent** (`CREATE TABLE IF NOT EXISTS`) and never drops
-or alters production data. It creates:
+The migration is **idempotent** and never drops allocation data. It:
 
-- `allocation_snapshots` — one row per finalized allocation with a
-  `UNIQUE(wallet_address, season, network)` constraint.
-- `allocation_pool_ledger` — a per-season ledger row whose lock serializes pool
-  budget consumption.
+- creates `allocation_snapshots` and `allocation_pool_ledger` if they do not
+  exist (one snapshot per wallet with a `UNIQUE(wallet_address, network)`
+  constraint), and
+- **automatically upgrades a legacy "Season 01" schema to the current
+  season-free schema**: it drops the `season` column (which carries no data
+  anymore), replaces the old `(wallet_address, season, network)` unique
+  constraint with `UNIQUE(wallet_address, network)`, rebuilds the pool ledger
+  with `PRIMARY KEY (network)` reconciled from the snapshot totals, and
+  collapses any duplicate wallet/network rows to the most recent snapshot.
+  **All existing finalized allocation snapshots are preserved unchanged.**
 
 Run it:
 
@@ -87,6 +92,7 @@ Expected output:
 
 ```
 [migrate] PostgreSQL schema ready on "ep-xxx.region.aws.neon.tech" (store=postgres, table=allocation_snapshots, ledger=allocation_pool_ledger)
+[migrate] legacy "Season 01" schema is upgraded automatically when detected
 [migrate] done
 ```
 
@@ -150,8 +156,8 @@ curl https://<your-vercel-url>/api/metrics
 ```
 
 ```json
-{ "success": true, "data": { "season": "Season 01", "network": "Robinhood Chain",
-  "allocationPool": 30000000000, "amountAllocated": 0, "remainingPool": 30000000000,
+{ "success": true, "data": { "network": "Robinhood Chain",
+  "allocationPool": 300000000, "amountAllocated": 0, "remainingPool": 300000000,
   "totalWaziNftHolders": null, "totalWaziNftSupply": null, "totalIndexedTransactions": null } }
 ```
 

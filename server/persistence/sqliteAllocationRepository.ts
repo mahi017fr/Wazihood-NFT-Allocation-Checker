@@ -11,7 +11,6 @@ import {
 interface AllocationRow {
   id: number;
   wallet_address: string;
-  season: string;
   network: string;
   allocation: number;
   transaction_count_at_snapshot: number;
@@ -26,7 +25,6 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS allocation_records (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   wallet_address TEXT NOT NULL,
-  season TEXT NOT NULL,
   network TEXT NOT NULL,
   allocation INTEGER NOT NULL,
   transaction_count_at_snapshot INTEGER NOT NULL,
@@ -35,17 +33,14 @@ CREATE TABLE IF NOT EXISTS allocation_records (
   activity_score REAL NOT NULL,
   nft_bonus INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
-  UNIQUE (wallet_address, season, network)
+  UNIQUE (wallet_address, network)
 );
-CREATE INDEX IF NOT EXISTS idx_allocation_season_network
-  ON allocation_records (season, network);
 `;
 
 function rowToRecord(row: AllocationRow): AllocationRecord {
   return {
     id: row.id,
     walletAddress: row.wallet_address,
-    season: row.season,
     network: row.network,
     allocation: row.allocation,
     transactionCountAtSnapshot: row.transaction_count_at_snapshot,
@@ -65,9 +60,9 @@ function normalizeWallet(address: string): string {
 /**
  * SQLite-backed repository built on Node's built-in `node:sqlite` (no native
  * dependency), primarily for LOCAL DEVELOPMENT. The synchronous single-connection
- * model serializes access, and the UNIQUE(wallet_address, season, network)
+ * model serializes access, and the UNIQUE(wallet_address, network)
  * constraint plus an atomic get-or-create transaction guarantee a wallet can
- * never receive two Season 01 snapshots, even under simultaneous requests.
+ * never receive two allocation snapshots, even under simultaneous requests.
  *
  * For production (Vercel serverless / distributed runtime) use the PostgreSQL
  * repository selected via ALLOCATION_STORE=postgres. This implementation only
@@ -91,37 +86,35 @@ export class SqliteAllocationRepository implements AllocationRepository {
 
   private findByWalletSync(
     walletAddress: string,
-    season: string,
     network: string,
   ): AllocationRecord | null {
     const row = this.db
       .prepare(
-        'SELECT * FROM allocation_records WHERE wallet_address = ? AND season = ? AND network = ?',
+        'SELECT * FROM allocation_records WHERE wallet_address = ? AND network = ?',
       )
-      .get(normalizeWallet(walletAddress), season, network) as unknown as AllocationRow | undefined;
+      .get(normalizeWallet(walletAddress), network) as unknown as AllocationRow | undefined;
     return row ? rowToRecord(row) : null;
   }
 
-  private totalAllocatedSync(season: string, network: string): number {
+  private totalAllocatedSync(network: string): number {
     const row = this.db
       .prepare(
-        'SELECT COALESCE(SUM(allocation), 0) AS total FROM allocation_records WHERE season = ? AND network = ?',
+        'SELECT COALESCE(SUM(allocation), 0) AS total FROM allocation_records WHERE network = ?',
       )
-      .get(season, network) as { total: number };
+      .get(network) as { total: number };
     return Number(row.total ?? 0);
   }
 
   async findByWallet(
     walletAddress: string,
-    season: string,
     network: string,
   ): Promise<AllocationRecord | null> {
-    return this.findByWalletSync(walletAddress, season, network);
+    return this.findByWalletSync(walletAddress, network);
   }
 
   async createAllocationSnapshot(
     input: CreateAllocationSnapshotInput,
-    season1Pool: number,
+    poolBudget: number,
   ): Promise<CreateSnapshotOutcome> {
     input = { ...input, walletAddress: normalizeWallet(input.walletAddress) };
     // The whole get-or-create body runs synchronously with no internal awaits,
@@ -129,14 +122,14 @@ export class SqliteAllocationRepository implements AllocationRepository {
     // another request despite the async method signature.
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      const existing = this.findByWalletSync(input.walletAddress, input.season, input.network);
+      const existing = this.findByWalletSync(input.walletAddress, input.network);
       if (existing) {
         this.db.exec('COMMIT');
         return { status: 'existing', record: existing };
       }
 
-      const alreadyAllocated = this.totalAllocatedSync(input.season, input.network);
-      const remaining = Math.max(0, season1Pool - alreadyAllocated);
+      const alreadyAllocated = this.totalAllocatedSync(input.network);
+      const remaining = Math.max(0, poolBudget - alreadyAllocated);
 
       if (remaining < input.allocation) {
         if (remaining < 1) {
@@ -148,15 +141,14 @@ export class SqliteAllocationRepository implements AllocationRepository {
 
       const insert = this.db.prepare(
         `INSERT INTO allocation_records (
-           wallet_address, season, network, allocation,
+           wallet_address, network, allocation,
            transaction_count_at_snapshot, nft_holder_at_snapshot,
            nft_count_at_snapshot, activity_score, nft_bonus, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       const createdAt = new Date().toISOString();
       insert.run(
         input.walletAddress,
-        input.season,
         input.network,
         input.allocation,
         input.transactionCountAtSnapshot,
@@ -168,7 +160,7 @@ export class SqliteAllocationRepository implements AllocationRepository {
       );
       this.db.exec('COMMIT');
 
-      const saved = this.findByWalletSync(input.walletAddress, input.season, input.network);
+      const saved = this.findByWalletSync(input.walletAddress, input.network);
       if (!saved) {
         throw new Error('Inserted allocation snapshot could not be read back.');
       }
@@ -183,16 +175,16 @@ export class SqliteAllocationRepository implements AllocationRepository {
     }
   }
 
-  async totalAllocated(season: string, network: string): Promise<number> {
-    return this.totalAllocatedSync(season, network);
+  async totalAllocated(network: string): Promise<number> {
+    return this.totalAllocatedSync(network);
   }
 
-  async countAllocations(season: string, network: string): Promise<number> {
+  async countAllocations(network: string): Promise<number> {
     const row = this.db
       .prepare(
-        'SELECT COUNT(*) AS count FROM allocation_records WHERE season = ? AND network = ?',
+        'SELECT COUNT(*) AS count FROM allocation_records WHERE network = ?',
       )
-      .get(season, network) as { count: number };
+      .get(network) as { count: number };
     return Number(row.count ?? 0);
   }
 

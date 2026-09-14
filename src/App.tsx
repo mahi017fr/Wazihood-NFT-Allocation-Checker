@@ -101,7 +101,7 @@ export default function App() {
       {/* Background Subtle Cyber Grid */}
       <div className="fixed inset-0 bg-cyber-grid opacity-40 pointer-events-none -z-10" />
 
-      {/* TOP: Wazihood branding with green underline, 3 middle menu items & Season 01 badge */}
+      {/* TOP: Wazihood branding with green underline, 3 middle menu items & LIVE badge */}
       <Navbar onHomeClick={handleReset} />
 
       {/* CENTER: Main Application Flow */}

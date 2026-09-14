@@ -32,7 +32,6 @@ const config: AllocationConfig = {
   activityScoreTiers: TIERS,
   nftHolderBonusPercent: 20,
   nftHolderBonusAllocation: 0,
-  season1Pool: 30_000_000_000,
 };
 
 function resultFor(nftCount: number, transactionCount: number) {
@@ -215,4 +214,22 @@ test('24/25: no mock wallet data or demo allocation values in the engine', () =>
   assert.equal(source.includes('Math.random'), false);
   assert.equal(hardcodedAddress.test(source), false, 'engine must not contain hardcoded wallet addresses');
   assert.equal(/\bMath\.random\b|\brandom()\b/.test(source), false);
+});
+
+// ── Tokenomics assertions ──────────────────────────────────────────────────
+
+test('total supply = 1,000,000,000 (1B)', async () => {
+  const { config: liveConfig } = await import('../server/config');
+  assert.equal(liveConfig.tokenomics.totalSupply, 1_000_000_000);
+});
+
+test('allocation pool = 300,000,000 (300M)', async () => {
+  const { config: liveConfig } = await import('../server/config');
+  assert.equal(liveConfig.tokenomics.allocationPool, 300_000_000);
+});
+
+test('pool percentage = 30% of total supply', async () => {
+  const { config: liveConfig } = await import('../server/config');
+  const poolPct = (liveConfig.tokenomics.allocationPool / liveConfig.tokenomics.totalSupply) * 100;
+  assert.equal(poolPct, 30);
 });

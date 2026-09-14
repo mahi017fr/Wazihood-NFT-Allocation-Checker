@@ -18,7 +18,6 @@ export interface AllocationCheckResponse {
   activityScore: number;
   nftBonus: number;
   allocation: number;
-  season: string;
   allocationFinalized: boolean;
   allocationSource: 'new_calculation' | 'snapshot';
   reason?: string;
@@ -28,9 +27,10 @@ export interface AllocationCheckServiceDeps {
   chain: Pick<RobinhoodChainService, 'getTransactionCount'>;
   nft: Pick<WaziNftService, 'getBalance' | 'isConfigured'>;
   allocationConfig: AllocationConfig;
-  /** $WAZI of the Season 01 pool already committed outside this system. */
+  /** Total $WAZI in the allocation pool. */
+  allocationPool: number;
+  /** $WAZI of the allocation pool already committed outside this system. */
   alreadyAllocated: number;
-  season: string;
   networkName: string;
   chainId: number;
   repository: AllocationRepository;
@@ -41,11 +41,11 @@ export class AllocationCheckService {
 
   async check(rawWalletAddress: string): Promise<AllocationCheckResponse> {
     const walletAddress = validateWalletAddress(rawWalletAddress);
-    const { season, chainId } = this.deps;
+    const { chainId } = this.deps;
     const network = this.deps.networkName;
 
     // ── Step 1: Check persistent snapshot ──────────────────────────────────
-    const existing = await this.deps.repository.findByWallet(walletAddress, season, network);
+    const existing = await this.deps.repository.findByWallet(walletAddress, network);
     if (existing) {
       return this.toResponseFromRecord(existing);
     }
@@ -82,7 +82,6 @@ export class AllocationCheckService {
         activityScore: 0,
         nftBonus: 0,
         allocation: 0,
-        season,
         allocationFinalized: false,
         allocationSource: 'new_calculation',
         reason: REQUIRED_TRANSACTION_REASON,
@@ -97,11 +96,10 @@ export class AllocationCheckService {
 
     // ── Step 6: Persist snapshot (atomic; handles pool cap + race safety) ─
     const poolBudget =
-      this.deps.allocationConfig.season1Pool - this.deps.alreadyAllocated;
+      this.deps.allocationPool - this.deps.alreadyAllocated;
     const outcome = await this.deps.repository.createAllocationSnapshot(
       {
         walletAddress,
-        season,
         network,
         allocation: calcResult.allocation,
         transactionCountAtSnapshot: txCount,
@@ -117,8 +115,8 @@ export class AllocationCheckService {
       throw new ApiError(
         409,
         'ALLOCATION_POOL_EXHAUSTED',
-        'Season 01 allocation pool is exhausted.',
-        'No tokens remain in the Season 01 allocation pool.',
+        'Allocation pool is exhausted.',
+        'No tokens remain in the allocation pool.',
       );
     }
 
@@ -140,7 +138,6 @@ export class AllocationCheckService {
       activityScore: record.activityScore,
       nftBonus: record.nftBonus,
       allocation: record.allocation,
-      season: record.season,
       allocationFinalized: true,
       allocationSource: fallbackSource,
     };
@@ -155,7 +152,6 @@ function defaultAllocationConfig(): AllocationConfig {
     activityScoreTiers: config.allocation.activityScoreTiers,
     nftHolderBonusPercent: config.allocation.nftHolderBonusPercent,
     nftHolderBonusAllocation: config.allocation.nftHolderBonusAllocation,
-    season1Pool: config.tokenomics.season1Pool,
   };
 }
 
@@ -167,8 +163,8 @@ export function getAllocationCheckService(): AllocationCheckService {
       chain: getRobinhoodChainService(),
       nft: getWaziNftService(),
       allocationConfig: defaultAllocationConfig(),
+      allocationPool: config.tokenomics.allocationPool,
       alreadyAllocated: config.tokenomics.alreadyAllocated,
-      season: config.allocation.season,
       networkName: config.network.name,
       chainId: config.network.chainId,
       repository: getAllocationRepository(),

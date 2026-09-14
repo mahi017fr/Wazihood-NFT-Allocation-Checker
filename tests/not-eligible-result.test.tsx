@@ -16,7 +16,6 @@ const data: AllocationCheckResponse = {
   activityScore: 0,
   nftBonus: 0,
   allocation: 0,
-  season: 'Season 01',
   allocationFinalized: false,
   allocationSource: 'new_calculation',
   reason: 'At least 1 Robinhood Chain transaction is required.',
@@ -75,4 +74,8 @@ test('the bonus-focused NFT explanation line is always visible', () => {
     <NotEligibleResult data={data} openseaCollectionUrl="" onReset={() => {}} />,
   );
   assert.ok(html.includes('Get a Wazi NFT to add a bonus on top of your activity-based allocation.'));
+});
+
+test('no season field in the data object', () => {
+  assert.equal('season' in data, false, 'test data must not contain season');
 });

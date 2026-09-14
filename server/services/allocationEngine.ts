@@ -1,5 +1,5 @@
 /**
- * Deterministic eligibility + allocation engine (Season 01).
+ * Deterministic eligibility + allocation engine.
  *
  * Eligibility is purely activity based:
  *   transactionCount >= 1  → eligible
@@ -31,7 +31,6 @@ export interface AllocationConfig {
   nftHolderBonusPercent: number;
   /** Flat $WAZI bonus paid to NFT holders; used when > 0, overriding percent. */
   nftHolderBonusAllocation: number;
-  season1Pool: number;
 }
 
 export interface AllocationInput {

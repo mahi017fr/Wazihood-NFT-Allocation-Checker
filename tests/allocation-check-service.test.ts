@@ -4,13 +4,12 @@ import { AllocationCheckService, type AllocationCheckServiceDeps } from '../serv
 import { ApiError } from '../server/errors';
 import { REQUIRED_TRANSACTION_REASON, type AllocationConfig } from '../server/services/allocationEngine';
 import { SqliteAllocationRepository } from '../server/persistence/sqliteAllocationRepository';
-import { ALLOCATION_NETWORK, ALLOCATION_SEASON, type AllocationRepository } from '../server/persistence/allocationRepository';
+import { ALLOCATION_NETWORK, type AllocationRepository } from '../server/persistence/allocationRepository';
 
-const SEASON = ALLOCATION_SEASON;
 const NETWORK = ALLOCATION_NETWORK;
 const VALID_ADDRESS = '0x71C44F3a9B3f6b4E90B04aF5796E25bB24F88F29';
 const LOWERCASE = VALID_ADDRESS.toLowerCase();
-const BIG_POOL = 30_000_000_000;
+const BIG_POOL = 300_000_000;
 
 const DEFAULT_CONFIG: AllocationConfig = {
   minAllocation: 1,
@@ -28,7 +27,6 @@ const DEFAULT_CONFIG: AllocationConfig = {
   ],
   nftHolderBonusPercent: 20,
   nftHolderBonusAllocation: 0,
-  season1Pool: BIG_POOL,
 };
 
 interface BuildOptions {
@@ -38,9 +36,9 @@ interface BuildOptions {
   chainError?: ApiError;
   nftError?: ApiError;
   config?: Partial<AllocationConfig>;
+  allocationPool?: number;
   alreadyAllocated?: number;
   repo?: AllocationRepository;
-  seasons?: string;
 }
 
 function fakeChain(initial: number, onChange?: (set: (v: number) => void) => void) {
@@ -80,8 +78,8 @@ function buildService(options: BuildOptions = {}) {
     chain: chain as AllocationCheckServiceDeps['chain'],
     nft: options.nftError ? failingNft(options.nftError) : fakeNft(options.nftCount ?? 0, options.nftConfigured ?? true),
     allocationConfig: { ...DEFAULT_CONFIG, ...options.config },
+    allocationPool: options.allocationPool ?? BIG_POOL,
     alreadyAllocated: options.alreadyAllocated ?? 0,
-    season: options.seasons ?? SEASON,
     networkName: NETWORK,
     chainId: 4663,
     repository: repo,
@@ -106,7 +104,7 @@ test('1: NFT holder + 1 transaction is eligible and persisted', async () => {
   assert.equal(r.nftCount, 1);
   assert.equal(r.transactionCount, 1);
   assert.ok(r.allocation >= 1);
-  assert.equal(await repo.countAllocations(SEASON, NETWORK), 1);
+  assert.equal(await repo.countAllocations(NETWORK), 1);
 });
 
 test('2: NFT holder + many transactions is eligible with an NFT bonus', async () => {
@@ -204,7 +202,7 @@ test('11: first check persists the allocation as new_calculation', async () => {
   const r = await service.check(VALID_ADDRESS);
   assert.equal(r.allocationSource, 'new_calculation');
   assert.equal(r.allocationFinalized, true);
-  const saved = await repo.findByWallet(LOWERCASE, SEASON, NETWORK);
+  const saved = await repo.findByWallet(LOWERCASE, NETWORK);
   assert.ok(saved);
   assert.equal(saved.allocation, r.allocation);
   assert.equal(saved.transactionCountAtSnapshot, 42);
@@ -220,7 +218,7 @@ test('12: second check returns the exact same allocation as a snapshot', async (
   assert.equal(second.allocation, first.allocation);
   assert.equal(second.transactionCount, first.transactionCount);
   assert.equal(second.nftCount, first.nftCount);
-  assert.equal(await repo.countAllocations(SEASON, NETWORK), 1);
+  assert.equal(await repo.countAllocations(NETWORK), 1);
 });
 
 test('13: second check does not recalculate blockchain allocation (no chain calls)', async () => {
@@ -230,8 +228,8 @@ test('13: second check does not recalculate blockchain allocation (no chain call
     chain: chain as AllocationCheckServiceDeps['chain'],
     nft: fakeNft(1),
     allocationConfig: DEFAULT_CONFIG,
+    allocationPool: BIG_POOL,
     alreadyAllocated: 0,
-    season: SEASON,
     networkName: NETWORK,
     chainId: 4663,
     repository: repo,
@@ -252,8 +250,8 @@ test('14: transaction count changing does not change the saved allocation', asyn
     chain: chain as AllocationCheckServiceDeps['chain'],
     nft: fakeNft(0),
     allocationConfig: DEFAULT_CONFIG,
+    allocationPool: BIG_POOL,
     alreadyAllocated: 0,
-    season: SEASON,
     networkName: NETWORK,
     chainId: 4663,
     repository: repo,
@@ -277,8 +275,8 @@ test('15: NFT ownership changing does not change the saved allocation', async ()
     chain: fakeChain(50) as unknown as AllocationCheckServiceDeps['chain'],
     nft,
     allocationConfig: DEFAULT_CONFIG,
+    allocationPool: BIG_POOL,
     alreadyAllocated: 0,
-    season: SEASON,
     networkName: NETWORK,
     chainId: 4663,
     repository: repo,
@@ -306,7 +304,7 @@ test('16: wallet address case normalization resolves to one record', async () =>
   assert.equal(viaMixed.allocation, viaLower.allocation);
   assert.equal(viaMixed.allocationSource, 'new_calculation', 'first check creates the snapshot');
   assert.equal(viaLower.allocationSource, 'snapshot', 'second check reuses the snapshot');
-  assert.equal(await repo.countAllocations(SEASON, NETWORK), 1, 'case differences must not create duplicate records');
+  assert.equal(await repo.countAllocations(NETWORK), 1, 'case differences must not create duplicate records');
 });
 
 test('17: duplicate allocation cannot be created via the service', async () => {
@@ -314,7 +312,7 @@ test('17: duplicate allocation cannot be created via the service', async () => {
   await service.check(VALID_ADDRESS);
   const dup = await service.check(VALID_ADDRESS);
   assert.equal(dup.allocationSource, 'snapshot');
-  assert.equal(await repo.countAllocations(SEASON, NETWORK), 1);
+  assert.equal(await repo.countAllocations(NETWORK), 1);
 });
 
 test('18: concurrent requests cannot create two allocations', async () => {
@@ -325,34 +323,34 @@ test('18: concurrent requests cannot create two allocations', async () => {
   assert.equal(createdSources, 1, 'exactly one request creates the snapshot');
   assert.equal(snapshotSources, results.length - 1);
   for (const r of results) assert.equal(r.allocation, results[0].allocation);
-  assert.equal(await repo.countAllocations(SEASON, NETWORK), 1);
+  assert.equal(await repo.countAllocations(NETWORK), 1);
 });
 
-// ── Season 01 pool cap ──────────────────────────────────────────────────────
+// ── Pool cap ────────────────────────────────────────────────────────────────
 
-test('19: Season 01 pool cap caps the allocation to the remaining pool', async () => {
+test('19: allocation pool cap caps the allocation to the remaining pool', async () => {
   const { service, repo } = buildService({
     tx: 5000,
     nftCount: 1,
-    config: { season1Pool: 1000 },
+    allocationPool: 1000,
     alreadyAllocated: 900, // remaining budget = 100
   });
   const r = await service.check(VALID_ADDRESS);
   assert.equal(r.allocation, 100, 'allocation must be capped to the remaining pool');
-  assert.ok(await repo.totalAllocated(SEASON, NETWORK) <= 100);
+  assert.ok(await repo.totalAllocated(NETWORK) <= 100);
 });
 
-test('19b: exhausted Season 01 pool returns ALLOCATION_POOL_EXHAUSTED, writes nothing', async () => {
+test('19b: exhausted pool returns ALLOCATION_POOL_EXHAUSTED, writes nothing', async () => {
   const { service, repo } = buildService({
     tx: 5000,
     nftCount: 1,
-    config: { season1Pool: 100 },
+    allocationPool: 100,
     alreadyAllocated: 100, // remaining budget = 0
   });
   await assert.rejects(service.check(VALID_ADDRESS), (e: unknown) => {
     return e instanceof ApiError && e.code === 'ALLOCATION_POOL_EXHAUSTED' && e.status === 409;
   });
-  assert.equal(await repo.countAllocations(SEASON, NETWORK), 0, 'exhausted pool must not create records');
+  assert.equal(await repo.countAllocations(NETWORK), 0, 'exhausted pool must not create records');
 });
 
 // ── Provider failures ───────────────────────────────────────────────────────
@@ -360,7 +358,7 @@ test('19b: exhausted Season 01 pool returns ALLOCATION_POOL_EXHAUSTED, writes no
 test('20: transaction provider failure never creates an allocation', async () => {
   const { service, repo } = buildService({ chainError: new ApiError(502, 'RPC_UNAVAILABLE', 'Robinhood Chain could not be reached.') });
   await assert.rejects(service.check(VALID_ADDRESS), (e: unknown) => e instanceof ApiError && e.code === 'RPC_UNAVAILABLE');
-  assert.equal(await repo.countAllocations(SEASON, NETWORK), 0);
+  assert.equal(await repo.countAllocations(NETWORK), 0);
 });
 
 test('20b: transaction timeout is a verification error, never eligible=false', async () => {
@@ -381,7 +379,7 @@ test('20d: TRANSACTION_CHECK_FAILED is a verification error', async () => {
 test('21: NFT provider failure never creates an allocation for a new wallet', async () => {
   const { service, repo } = buildService({ tx: 100, nftError: new ApiError(502, 'NFT_CHECK_FAILED', 'Could not verify.') });
   await assert.rejects(service.check(VALID_ADDRESS), (e: unknown) => e instanceof ApiError && e.code === 'NFT_CHECK_FAILED');
-  assert.equal(await repo.countAllocations(SEASON, NETWORK), 0);
+  assert.equal(await repo.countAllocations(NETWORK), 0);
 });
 
 test('21b: NFT_CONTRACT_NOT_DEPLOYED is a verification error, never eligible=false', async () => {
@@ -416,10 +414,54 @@ test('missing Wazi NFT contract returns a clear config error', async () => {
   });
 });
 
-test('response uses the documented Season 01 / Robinhood Chain values', async () => {
+test('response uses the documented Robinhood Chain values and contains no season field', async () => {
   const { service } = buildService({ tx: 42, nftCount: 1 });
   const r = await service.check(VALID_ADDRESS);
-  assert.equal(r.season, 'Season 01');
   assert.equal(r.network, 'Robinhood Chain');
   assert.equal(r.chainId, 4663);
+  assert.equal('season' in r, false, 'response must not contain a season field');
+});
+
+// ── New tokenomics assertions ──────────────────────────────────────────────
+
+test('total supply = 1,000,000,000 (1B)', async () => {
+  const { config } = await import('../server/config');
+  assert.equal(config.tokenomics.totalSupply, 1_000_000_000);
+});
+
+test('allocation pool = 300,000,000 (300M)', async () => {
+  const { config } = await import('../server/config');
+  assert.equal(config.tokenomics.allocationPool, 300_000_000);
+});
+
+test('pool percentage = 30% of total supply', async () => {
+  const { config } = await import('../server/config');
+  const poolPct = (config.tokenomics.allocationPool / config.tokenomics.totalSupply) * 100;
+  assert.equal(poolPct, 30);
+});
+
+test('maximum wallet allocation = 100,000', () => {
+  assert.equal(DEFAULT_CONFIG.maxAllocation, 100_000);
+});
+
+test('minimum eligible allocation = 1', () => {
+  assert.equal(DEFAULT_CONFIG.minAllocation, 1);
+});
+
+test('no API response contains a season field', async () => {
+  const { service } = buildService({ tx: 42, nftCount: 1 });
+  const r = await service.check(VALID_ADDRESS);
+  assert.equal('season' in r, false, 'allocation check response must not contain season');
+});
+
+test('allocation pool cannot be exceeded', async () => {
+  const { service, repo } = buildService({
+    tx: 5000,
+    nftCount: 1,
+    allocationPool: 500,
+    alreadyAllocated: 0,
+  });
+  await service.check(VALID_ADDRESS);
+  const total = await repo.totalAllocated(NETWORK);
+  assert.ok(total <= 500, `total allocated ${total} exceeds pool 500`);
 });

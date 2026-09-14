@@ -44,9 +44,9 @@ export const Hero: React.FC<HeroProps> = ({
         
         {/* TOP CENTER HEADLINE */}
         <div className="text-center max-w-2xl mx-auto mb-8">
-          {/* Subtitle: $WAZI · SEASON 01 */}
+          {/* Subtitle: $WAZI · ROBINHOOD CHAIN */}
           <div className="text-xs sm:text-sm font-mono-code font-bold uppercase tracking-[0.25em] text-zinc-900 mb-3">
-            $WAZI &nbsp;·&nbsp; SEASON 01
+            $WAZI &nbsp;·&nbsp; ROBINHOOD CHAIN
           </div>
 
           {/* Main Headline: YOUR $WAZI ALLOCATION AWAITS. */}
@@ -63,7 +63,7 @@ export const Hero: React.FC<HeroProps> = ({
             id="hero-supporting-text"
             className="text-xs sm:text-sm text-zinc-600 font-normal leading-relaxed max-w-lg mx-auto"
           >
-            Enter your wallet address to check your estimated Season 01 $WAZI allocation based on your on-chain activity. Wazi NFT holders receive a bonus on top.
+            Enter your wallet address to check your estimated $WAZI allocation based on your on-chain activity. Wazi NFT holders receive a bonus on top.
           </p>
         </div>
 
@@ -265,7 +265,7 @@ export const Hero: React.FC<HeroProps> = ({
 
         </div>
 
-        {/* 3 STAT CARDS: 100B, 30B, 30% */}
+        {/* 3 STAT CARDS: 1B, 300M, 30% */}
         <StatCards />
 
       </div>

@@ -186,7 +186,7 @@ export const WojakLineupBanner: React.FC = () => {
             <div className="w-2.5 h-2.5 rounded-full bg-zinc-300 border-2 border-white shadow-xs" />
             {/* Node 3 */}
             <div className="w-2.5 h-2.5 rounded-full bg-zinc-300 border-2 border-white shadow-xs" />
-            {/* Node 4 (Active / Season 01 highlighted green!) */}
+            {/* Node 4 (Active / highlighted green!) */}
             <div className="w-3.5 h-3.5 rounded-full bg-[#00c805] border-2 border-white shadow-xs ring-2 ring-[#00c805]/30" />
             {/* Node 5 */}
             <div className="w-2.5 h-2.5 rounded-full bg-zinc-300 border-2 border-white shadow-xs" />

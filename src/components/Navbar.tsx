@@ -77,13 +77,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onHomeClick }) => {
           </a>
         </nav>
 
-        {/* Season 01 Pill Badge with green dot */}
+        {/* LIVE Pill Badge with green dot */}
         <div 
-          id="season-badge"
+          id="live-badge"
           className="hidden sm:inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white border border-zinc-200 text-xs font-mono-code text-zinc-800 shadow-xs hover:border-zinc-300 transition-colors"
         >
           <span className="w-2 h-2 rounded-full bg-[#00c805]" />
-          <span className="font-medium text-[11px] sm:text-xs">Season 01</span>
+          <span className="font-medium text-[11px] sm:text-xs">LIVE</span>
         </div>
       </div>
     </header>

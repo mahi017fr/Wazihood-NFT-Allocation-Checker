@@ -6,9 +6,12 @@
  *   ALLOCATION_STORE=postgres  DATABASE_URL=... npx tsx server/persistence/migrate.ts
  *   ALLOCATION_STORE=sqlite    npx tsx server/persistence/migrate.ts
  *
- * Safe to run repeatedly; uses CREATE TABLE IF NOT EXISTS.
- * For the Postgres store it will also create/update the pool ledger table.
- * No production data is ever dropped or altered.
+ * Safe to run repeatedly: CREATE TABLE IF NOT EXISTS; a legacy "Season 01"
+ * schema (with a season column) is automatically migrated in place to the
+ * season-free schema - the season column and its constraints are removed, the
+ * unique constraint becomes (wallet_address, network), and the pool ledger is
+ * rebuilt with PRIMARY KEY (network). Existing allocation snapshots are never
+ * dropped or recalculated during migration.
  */
 
 import { createAllocationRepository } from './index.js';
@@ -28,6 +31,7 @@ async function main(): Promise<void> {
       `[migrate] PostgreSQL schema ready on "${host}" ` +
         `(store=postgres, table=allocation_snapshots, ledger=allocation_pool_ledger)`,
     );
+    console.log('[migrate] legacy "Season 01" schema is upgraded automatically when detected');
   } else {
     // SqliteAllocationRepository applies its own schema in the constructor.
     console.log(`[migrate] SQLite schema ready on ${config.persistence.databasePath} (store=sqlite)`);

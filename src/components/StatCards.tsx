@@ -6,7 +6,7 @@ export const StatCards: React.FC = () => {
       id="compact-stat-cards" 
       className="w-full max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-6"
     >
-      {/* 100B - TOTAL $WAZI SUPPLY */}
+      {/* 1B - TOTAL $WAZI SUPPLY */}
       <div className="rounded-2xl p-4 sm:p-5 bg-white border border-zinc-200/90 hover:border-zinc-300 transition-all text-center relative group shadow-xs hover:shadow-md">
         {/* Green line-art coin stack icon */}
         <div className="mx-auto w-7 h-7 mb-1.5 flex items-center justify-center text-[#00c805]">
@@ -17,7 +17,7 @@ export const StatCards: React.FC = () => {
           </svg>
         </div>
         <div className="font-display font-black text-2xl sm:text-3xl text-zinc-950 tracking-tight">
-          100B
+          1B
         </div>
         <div className="text-[11px] font-mono-code font-bold uppercase tracking-wider text-zinc-900 mt-1">
           TOTAL $WAZI SUPPLY
@@ -27,7 +27,7 @@ export const StatCards: React.FC = () => {
         </div>
       </div>
 
-      {/* 30B - SEASON 01 ALLOCATION */}
+      {/* 300M - ALLOCATION POOL */}
       <div className="rounded-2xl p-4 sm:p-5 bg-white border border-zinc-200/90 hover:border-[#00c805]/40 transition-all text-center relative group shadow-xs hover:shadow-md">
         {/* Green line-art cube icon */}
         <div className="mx-auto w-7 h-7 mb-1.5 flex items-center justify-center text-[#00c805]">
@@ -38,17 +38,17 @@ export const StatCards: React.FC = () => {
           </svg>
         </div>
         <div className="font-display font-black text-2xl sm:text-3xl text-zinc-950 tracking-tight">
-          30B
+          300M
         </div>
         <div className="text-[11px] font-mono-code font-bold uppercase tracking-wider text-[#00c805] mt-1">
-          SEASON 01 ALLOCATION
+          ALLOCATION POOL
         </div>
         <div className="text-[11px] font-mono-code text-zinc-500 mt-0.5">
           30% of total supply
         </div>
       </div>
 
-      {/* 30% - SEASON 01 */}
+      {/* 30% - ALLOCATION */}
       <div className="rounded-2xl p-4 sm:p-5 bg-white border border-zinc-200/90 hover:border-[#00c805]/40 transition-all text-center relative group shadow-xs hover:shadow-md">
         {/* Green line-art pie chart icon */}
         <div className="mx-auto w-7 h-7 mb-1.5 flex items-center justify-center text-[#00c805]">
@@ -61,7 +61,7 @@ export const StatCards: React.FC = () => {
           30%
         </div>
         <div className="text-[11px] font-mono-code font-bold uppercase tracking-wider text-[#00c805] mt-1">
-          SEASON 01
+          ALLOCATION
         </div>
         <div className="text-[11px] font-mono-code text-zinc-500 mt-0.5">
           Community distribution

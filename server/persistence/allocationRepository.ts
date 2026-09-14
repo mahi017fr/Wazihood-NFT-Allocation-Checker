@@ -1,8 +1,8 @@
 /**
  * Persistent allocation snapshot repository.
  *
- * The module-level Shape of the Season 01 allocation snapshot. A wallet may
- * only ever own ONE allocation per (walletAddress, season, network). Once a
+ * The module-level Shape of the $WAZI allocation snapshot. A wallet may
+ * only ever own ONE allocation per (walletAddress, network). Once a
  * snapshot is created it is final: later checks return the stored value and
  * never recalculate.
  *
@@ -12,14 +12,12 @@
  * service layer.
  */
 
-export const ALLOCATION_SEASON = 'Season 01';
 export const ALLOCATION_NETWORK = 'Robinhood Chain';
 
 export interface AllocationRecord {
   id: number;
   /** Normalized lowercase wallet address - the only lookup key. */
   walletAddress: string;
-  season: string;
   network: string;
   allocation: number;
   transactionCountAtSnapshot: number;
@@ -32,7 +30,6 @@ export interface AllocationRecord {
 
 export interface CreateAllocationSnapshotInput {
   walletAddress: string;
-  season: string;
   network: string;
   allocation: number;
   transactionCountAtSnapshot: number;
@@ -46,7 +43,7 @@ export type CreateSnapshotOutcome =
   | { status: 'created'; record: AllocationRecord }
   /** Another request already finalized this wallet's snapshot. */
   | { status: 'existing'; record: AllocationRecord }
-  /** Remaining Season 01 pool cannot cover a new allocation. */
+  /** Remaining allocation pool cannot cover a new allocation. */
   | { status: 'pool_exhausted' };
 
 /**
@@ -57,7 +54,6 @@ export type CreateSnapshotOutcome =
 export interface AllocationRepository {
   findByWallet(
     walletAddress: string,
-    season: string,
     network: string,
   ): Promise<AllocationRecord | null>;
 
@@ -66,20 +62,20 @@ export interface AllocationRepository {
    * Applied pool cap: when the remaining pool is insufficient for the
    * requested allocation the stored allocation is capped to the remaining
    * pool; when nothing remains the outcome is `pool_exhausted` and no row is
-   * written. Implementations must guarantee the same wallet/season/network can
+   * written. Implementations must guarantee the same wallet/network can
    * never be stored twice, even under simultaneous requests, via a database
    * unique constraint and an insert-or-read-existing flow.
    *
-   * @param season1Pool total Season 01 budget available for new snapshots.
+   * @param poolBudget total allocation pool budget available for new snapshots.
    */
   createAllocationSnapshot(
     input: CreateAllocationSnapshotInput,
-    season1Pool: number,
+    poolBudget: number,
   ): Promise<CreateSnapshotOutcome>;
 
-  totalAllocated(season: string, network: string): Promise<number>;
+  totalAllocated(network: string): Promise<number>;
 
-  countAllocations(season: string, network: string): Promise<number>;
+  countAllocations(network: string): Promise<number>;
 
   close(): Promise<void>;
 }

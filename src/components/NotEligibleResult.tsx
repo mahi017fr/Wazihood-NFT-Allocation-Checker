@@ -34,7 +34,7 @@ export const NotEligibleResult: React.FC<NotEligibleResultProps> = ({ data, open
       {/* SECTION 1: HEADER */}
       <div className="text-center space-y-2 mt-10">
         <div className="text-xs font-mono-code font-bold tracking-[0.2em] text-zinc-500 uppercase">
-          $WAZI · {data.season}
+          $WAZI
         </div>
 
         <h1 className="font-display font-black text-4xl sm:text-5xl md:text-6xl text-zinc-950 tracking-tight flex items-center justify-center flex-wrap gap-x-3 gap-y-1">

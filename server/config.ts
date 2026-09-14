@@ -98,13 +98,12 @@ export const config = {
     activityScoreTiers: readScoreTiers(process.env.ACTIVITY_SCORE_TIERS_JSON),
     nftHolderBonusPercent: toNumber(process.env.NFT_HOLDER_BONUS_PERCENT, 20),
     nftHolderBonusAllocation: toNumber(process.env.NFT_HOLDER_BONUS_ALLOCATION, 0),
-    season: (process.env.SEASON01_NAME || 'Season 01').trim(),
   },
 
   tokenomics: {
-    totalSupply: toNumber(process.env.SEASON01_TOTAL_SUPPLY, 100_000_000_000),
-    season1Pool: toNumber(process.env.SEASON01_TOTAL_POOL, 30_000_000_000),
-    alreadyAllocated: toNumber(process.env.SEASON01_ALREADY_ALLOCATED, 0),
+    totalSupply: toNumber(process.env.TOTAL_WAZI_SUPPLY, 1_000_000_000),
+    allocationPool: toNumber(process.env.ALLOCATION_POOL, 300_000_000),
+    alreadyAllocated: toNumber(process.env.ALREADY_ALLOCATED, 0),
   },
 
   persistence: {

@@ -20,7 +20,6 @@ const SUCCESS_RESPONSE = {
   activityScore: 0,
   nftBonus: 0,
   allocation: 0,
-  season: 'Season 01',
   allocationFinalized: false,
   allocationSource: 'new_calculation',
   reason: 'At least 1 Robinhood Chain transaction is required.',
@@ -153,6 +152,7 @@ test('successful service result passes through the Express route unchanged', asy
   assert.equal(response.status, 200);
   assert.equal(body.success, true);
   assert.equal(body.data.eligible, false);
+  assert.equal('season' in body.data, false, 'API response must not contain season field');
   await close();
 });
 

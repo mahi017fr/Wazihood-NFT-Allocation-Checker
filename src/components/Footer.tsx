@@ -40,8 +40,6 @@ export const Footer: React.FC<FooterProps> = ({ doodleText = 'A BRIGHTER\nTOMORR
 
         {/* CENTER: Navigation Links */}
         <div className="flex items-center space-x-3 text-xs font-mono-code text-zinc-600">
-          <span className="hover:text-zinc-900 cursor-pointer transition-colors">Season 01</span>
-          <span className="text-zinc-300">•</span>
           <span className="hover:text-zinc-900 cursor-pointer transition-colors">$WAZI</span>
           <span className="text-zinc-300">•</span>
           <span className="hover:text-zinc-900 cursor-pointer transition-colors">Community</span>

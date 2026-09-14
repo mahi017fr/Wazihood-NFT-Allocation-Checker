@@ -1,4 +1,4 @@
-/** Mirrors the backend /api/allocation/check response for the new
+/** Mirrors the backend /api/allocation/check response for the
  *  transaction-activity-based eligibility system.
  *
  *  Eligibility = at least 1 Robinhood Chain transaction.
@@ -16,14 +16,12 @@ export interface AllocationCheckResponse {
   activityScore: number;
   nftBonus: number;
   allocation: number;
-  season: string;
   allocationFinalized: boolean;
   allocationSource: 'new_calculation' | 'snapshot';
   reason?: string;
 }
 
 export interface NetworkMetrics {
-  season: string;
   network: string;
   allocationPool: number;
   amountAllocated: number;
