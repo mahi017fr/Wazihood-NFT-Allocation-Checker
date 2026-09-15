@@ -16,10 +16,15 @@ export interface AllocationCheckResponse {
   nftHolder: boolean;
   nftCount: number;
   activityScore: number;
+  baseAllocation: number;
   nftBonus: number;
   allocation: number;
   allocationFinalized: boolean;
-  allocationSource: 'new_calculation' | 'snapshot';
+  allocationSource: 'new_calculation' | 'snapshot' | 'nft_upgrade';
+  /** Whether the one-time NFT bonus has been granted to this wallet. */
+  nftBonusApplied: boolean;
+  /** Whether this snapshot was upgraded via the one-time NFT bonus path. */
+  allocationUpgraded: boolean;
   reason?: string;
 }
 
@@ -47,7 +52,7 @@ export class AllocationCheckService {
     // ── Step 1: Check persistent snapshot ──────────────────────────────────
     const existing = await this.deps.repository.findByWallet(walletAddress, network);
     if (existing) {
-      return this.toResponseFromRecord(existing);
+      return this.checkExistingSnapshot(existing, walletAddress, network);
     }
 
     // ── Step 2: NFT contract guard ────────────────────────────────────────
@@ -80,10 +85,13 @@ export class AllocationCheckService {
         nftHolder: holder,
         nftCount,
         activityScore: 0,
+        baseAllocation: 0,
         nftBonus: 0,
         allocation: 0,
         allocationFinalized: false,
         allocationSource: 'new_calculation',
+        nftBonusApplied: false,
+        allocationUpgraded: false,
         reason: REQUIRED_TRANSACTION_REASON,
       };
     }
@@ -106,6 +114,7 @@ export class AllocationCheckService {
         nftHolderAtSnapshot: holder,
         nftCountAtSnapshot: nftCount,
         activityScore: calcResult.activityScore,
+        baseAllocation: calcResult.baseAllocation,
         nftBonus: calcResult.nftBonus,
       },
       poolBudget,
@@ -123,9 +132,64 @@ export class AllocationCheckService {
     return this.toResponseFromRecord(outcome.record, outcome.status === 'created' ? 'new_calculation' : 'snapshot');
   }
 
+  /**
+   * Handles every check for a wallet that already has a finalized snapshot.
+   *
+   * The activity-based allocation is NEVER recalculated: the exact frozen
+   * snapshot is returned unchanged. The only mutation allowed is the ONE-TIME
+   * NFT upgrade: when a snapshot was created without an NFT bonus and the
+   * wallet now holds the Wazi NFT, exactly the configured flat bonus (25,000)
+   * is added once and the snapshot is updated to the final upgraded allocation.
+   * Once the bonus has been applied (whether on the first check or via the
+   * upgrade path) it can never be granted or reverted again.
+   */
+  private async checkExistingSnapshot(
+    snapshot: AllocationRecord,
+    walletAddress: string,
+    network: string,
+  ): Promise<AllocationCheckResponse> {
+    // Bonus already granted: the frozen allocation is final. Selling or
+    // transferring the NFT later must never reduce it.
+    if (snapshot.nftBonusApplied || !this.deps.nft.isConfigured()) {
+      return this.toResponseFromRecord(snapshot, 'snapshot');
+    }
+
+    // One-time NFT upgrade detection. A transient ownership-check failure is
+    // non-fatal: the exact frozen snapshot is returned and the upgrade is
+    // retried on the next check. The transaction count is never queried again.
+    let nftCount: number;
+    try {
+      nftCount = await this.deps.nft.getBalance(walletAddress);
+    } catch {
+      return this.toResponseFromRecord(snapshot, 'snapshot');
+    }
+
+    if (nftCount <= 0) {
+      return this.toResponseFromRecord(snapshot, 'snapshot');
+    }
+
+    const outcome = await this.deps.repository.applyNftUpgrade({
+      walletAddress,
+      network,
+      bonusAllocation: this.deps.allocationConfig.nftHolderBonusAllocation,
+      maxAllocation: this.deps.allocationConfig.maxAllocation,
+      nftCount,
+    });
+
+    if (outcome.status === 'upgraded') {
+      return this.toResponseFromRecord(outcome.record, 'nft_upgrade');
+    }
+    // A concurrent request already applied the bonus (or the snapshot
+    // disappeared); return the persisted truth — never a duplicated bonus.
+    if (outcome.status === 'already_applied') {
+      return this.toResponseFromRecord(outcome.record, 'snapshot');
+    }
+    return this.toResponseFromRecord(snapshot, 'snapshot');
+  }
+
   private toResponseFromRecord(
     record: AllocationRecord,
-    fallbackSource: 'new_calculation' | 'snapshot' = 'snapshot',
+    fallbackSource: AllocationCheckResponse['allocationSource'] = 'snapshot',
   ): AllocationCheckResponse {
     return {
       walletAddress: record.walletAddress,
@@ -136,10 +200,13 @@ export class AllocationCheckService {
       nftHolder: record.nftHolderAtSnapshot,
       nftCount: record.nftCountAtSnapshot,
       activityScore: record.activityScore,
+      baseAllocation: record.baseAllocation,
       nftBonus: record.nftBonus,
       allocation: record.allocation,
       allocationFinalized: true,
       allocationSource: fallbackSource,
+      nftBonusApplied: record.nftBonusApplied,
+      allocationUpgraded: record.nftUpgradeAt !== null,
     };
   }
 }
@@ -152,6 +219,7 @@ function defaultAllocationConfig(): AllocationConfig {
     activityScoreTiers: config.allocation.activityScoreTiers,
     nftHolderBonusPercent: config.allocation.nftHolderBonusPercent,
     nftHolderBonusAllocation: config.allocation.nftHolderBonusAllocation,
+    maxNonNftAllocation: config.allocation.maxNonNftAllocation,
   };
 }
 

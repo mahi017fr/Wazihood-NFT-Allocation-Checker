@@ -5,9 +5,38 @@ import { config, isNftContractConfigured, isDataProviderConfigured } from './con
 import { toApiErrorBody, toApiSuccessBody, ApiError } from './errors.js';
 import { getAllocationCheckService } from './services/allocationCheckService.js';
 import { getAllocationRepository } from './persistence/index.js';
+import type { AllocationRepository } from './persistence/allocationRepository.js';
 
 export interface AppOptions {
   allocationCheckService?: { check(walletAddress: string): Promise<unknown> };
+  allocationRepository?: AllocationRepository;
+}
+
+/**
+ * Require the configured ADMIN_API_KEY before granting access to admin
+ * endpoints. The key is a server-side secret that must never ship in frontend
+ * code. When ADMIN_API_KEY is empty the admin APIs are disabled entirely.
+ */
+function requireAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  const adminKey = config.admin.apiKey;
+  if (!adminKey) {
+    return next(
+      new ApiError(
+        503,
+        'ADMIN_API_NOT_CONFIGURED',
+        'Admin API key is not configured.',
+        'Set ADMIN_API_KEY in the server environment to enable admin endpoints.',
+      ),
+    );
+  }
+  const header = (req.header('x-admin-api-key') || '').trim();
+  const authorization = (req.header('authorization') || '').trim();
+  const bearer = authorization.startsWith('Bearer ') ? authorization.slice('Bearer '.length).trim() : '';
+  const provided = header || bearer;
+  if (!provided || provided !== adminKey) {
+    return next(new ApiError(401, 'UNAUTHORIZED', 'Missing or invalid admin API key.'));
+  }
+  return next();
 }
 
 /**
@@ -31,6 +60,8 @@ export function buildApp(options: AppOptions = {}): express.Express {
   });
 
   const allocationCheckService = options.allocationCheckService ?? getAllocationCheckService();
+  const resolveAllocationRepository = (): AllocationRepository =>
+    options.allocationRepository ?? getAllocationRepository();
 
   app.get('/api/health', (req, res) => {
     res.json(
@@ -58,10 +89,9 @@ export function buildApp(options: AppOptions = {}): express.Express {
   // from the configured indexer/provider are returned as null - never faked.
   app.get('/api/metrics', async (req, res) => {
     const network = config.network.name;
-    const repository = getAllocationRepository();
     const pool = config.tokenomics.allocationPool;
     const amountAllocated =
-      (await repository.totalAllocated(network)) + config.tokenomics.alreadyAllocated;
+      (await resolveAllocationRepository().totalAllocated(network)) + config.tokenomics.alreadyAllocated;
     res.json(
       toApiSuccessBody({
         network,
@@ -87,6 +117,93 @@ export function buildApp(options: AppOptions = {}): express.Express {
           `[AllocationCheck] check failed code=${error.code} status=${error.status} wallet=${typeof req.body === 'object' && req.body ? String((req.body as { walletAddress?: string }).walletAddress ?? '') : ''}`,
         );
       }
+      const { status, body: errorBody } = toApiErrorBody(error);
+      res.status(status).json(errorBody);
+    }
+  });
+
+  // ── Admin (authenticated) ───────────────────────────────────────────────
+  function adminRecordView(record: {
+    walletAddress: string;
+    network: string;
+    allocation: number;
+    transactionCountAtSnapshot: number;
+    activityScore: number;
+    baseAllocation: number;
+    nftBonus: number;
+    nftHolderAtSnapshot: boolean;
+    nftCountAtSnapshot: number;
+    nftBonusApplied: boolean;
+    nftUpgradeAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }) {
+    return {
+      walletAddress: record.walletAddress,
+      network: record.network,
+      allocation: record.allocation,
+      transactionCount: record.transactionCountAtSnapshot,
+      activityScore: record.activityScore,
+      baseAllocation: record.baseAllocation,
+      nftBonus: record.nftBonus,
+      nftHolder: record.nftHolderAtSnapshot,
+      nftCount: record.nftCountAtSnapshot,
+      nftBonusApplied: record.nftBonusApplied,
+      allocationSource: record.nftUpgradeAt ? 'nft_upgrade' : 'snapshot',
+      allocationUpgraded: record.nftUpgradeAt !== null,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      nftUpgradeAt: record.nftUpgradeAt,
+    };
+  }
+
+  app.get('/api/admin/allocations', requireAdminAuth, async (req, res) => {
+    try {
+      const network = config.network.name;
+      const parsePositiveInt = (raw: unknown, fallback: number): number => {
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
+      };
+      const limit = parsePositiveInt(req.query.limit, 50) || 50;
+      const offset = parsePositiveInt(req.query.offset, 0) || 0;
+      const result = await resolveAllocationRepository().listAllocations(network, {
+        limit: Math.min(200, limit),
+        offset,
+      });
+      res.json(
+        toApiSuccessBody({
+          records: result.records.map(adminRecordView),
+          pagination: {
+            total: result.total,
+            limit,
+            offset,
+          },
+        }),
+      );
+    } catch (error) {
+      const { status, body: errorBody } = toApiErrorBody(error);
+      res.status(status).json(errorBody);
+    }
+  });
+
+  app.get('/api/admin/metrics', requireAdminAuth, async (req, res) => {
+    try {
+      const network = config.network.name;
+      const pool = config.tokenomics.allocationPool;
+      const stats = await resolveAllocationRepository().allocationStats(network);
+      const amountAllocated = stats.totalAllocated + config.tokenomics.alreadyAllocated;
+      res.json(
+        toApiSuccessBody({
+          network,
+          totalWalletsChecked: stats.totalWallets,
+          totalEligibleWallets: stats.eligibleWallets,
+          totalAllocated: amountAllocated,
+          remainingPool: Math.max(0, pool - amountAllocated),
+          totalNftBonusAllocated: stats.totalNftBonus,
+          nftUpgradedWallets: stats.nftUpgradedWallets,
+        }),
+      );
+    } catch (error) {
       const { status, body: errorBody } = toApiErrorBody(error);
       res.status(status).json(errorBody);
     }

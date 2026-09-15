@@ -14,10 +14,15 @@ export interface AllocationCheckResponse {
   nftHolder: boolean;
   nftCount: number;
   activityScore: number;
+  baseAllocation: number;
   nftBonus: number;
   allocation: number;
   allocationFinalized: boolean;
-  allocationSource: 'new_calculation' | 'snapshot';
+  allocationSource: 'new_calculation' | 'snapshot' | 'nft_upgrade';
+  /** Whether the one-time NFT bonus has been granted to this wallet. */
+  nftBonusApplied: boolean;
+  /** Whether this snapshot was upgraded via the one-time NFT bonus path. */
+  allocationUpgraded: boolean;
   reason?: string;
 }
 

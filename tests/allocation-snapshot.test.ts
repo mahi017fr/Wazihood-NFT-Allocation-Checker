@@ -20,6 +20,7 @@ function makeSnapshot(overrides: Partial<Parameters<SqliteAllocationRepository['
     nftHolderAtSnapshot: true,
     nftCountAtSnapshot: 1,
     activityScore: 78,
+    baseAllocation: 16_500,
     nftBonus: 2_000,
     ...overrides,
   };
@@ -199,5 +200,191 @@ test('repeated wallet submission returns the exact same allocation snapshot', as
     assert.equal(result.status, 'existing');
     assert.equal(result.record.allocation, first.record.allocation);
   }
+  await repo.close();
+});
+
+// ── One-time NFT upgrade ────────────────────────────────────────────────────
+
+function makeNonNftSnapshot(overrides: Partial<Parameters<SqliteAllocationRepository['createAllocationSnapshot']>[0]> = {}) {
+  return makeSnapshot({
+    allocation: 22_500,
+    nftHolderAtSnapshot: false,
+    nftCountAtSnapshot: 0,
+    activityScore: 75,
+    baseAllocation: 22_500,
+    nftBonus: 0,
+    ...overrides,
+  });
+}
+
+test('NFT upgrade: non-bonus snapshot upgrades by exactly +25,000 and is marked final', async () => {
+  const repo = new SqliteAllocationRepository(':memory:');
+  const created = await repo.createAllocationSnapshot(makeNonNftSnapshot(), BIG_POOL);
+  assert.equal(created.status, 'created');
+  assert.equal(created.record.nftBonusApplied, false);
+  assert.equal(created.record.nftUpgradeAt, null);
+
+  const upgraded = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(upgraded.status, 'upgraded');
+  assert.equal(upgraded.record.allocation, 22_500 + 25_000);
+  assert.equal(upgraded.record.nftBonus, 25_000);
+  assert.equal(upgraded.record.baseAllocation, 22_500, 'activity allocation stays frozen');
+  assert.equal(upgraded.record.nftBonusApplied, true);
+  assert.notEqual(upgraded.record.nftUpgradeAt, null, 'upgrade timestamp must be persisted');
+  assert.equal(upgraded.record.nftHolderAtSnapshot, true);
+  await repo.close();
+});
+
+test('NFT upgrade: already-applied snapshot is never upgraded twice', async () => {
+  const repo = new SqliteAllocationRepository(':memory:');
+  await repo.createAllocationSnapshot(makeNonNftSnapshot(), BIG_POOL);
+  const first = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(first.status, 'upgraded');
+  const second = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 2,
+  });
+  assert.equal(second.status, 'already_applied');
+  assert.equal(second.record.allocation, first.record.allocation, 'no second +25,000');
+  assert.equal(second.record.nftBonus, 25_000);
+  await repo.close();
+});
+
+test('NFT upgrade: bonus respects the 100,000 maximum allocation cap', async () => {
+  const repo = new SqliteAllocationRepository(':memory:');
+  await repo.createAllocationSnapshot(makeNonNftSnapshot({ allocation: 90_000, baseAllocation: 90_000 }), BIG_POOL);
+  const upgraded = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(upgraded.status, 'upgraded');
+  assert.equal(upgraded.record.allocation, 100_000, 'must cap at the configured maximum');
+  assert.equal(upgraded.record.nftBonus, 25_000);
+  await repo.close();
+});
+
+test('NFT upgrade: missing wallet returns not_found', async () => {
+  const repo = new SqliteAllocationRepository(':memory:');
+  const result = await repo.applyNftUpgrade({
+    walletAddress: '0x' + 'f'.repeat(40),
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(result.status, 'not_found');
+  await repo.close();
+});
+
+test('NFT upgrade: concurrent requests grant the bonus exactly once', async () => {
+  const repo = new SqliteAllocationRepository(':memory:');
+  await repo.createAllocationSnapshot(makeNonNftSnapshot(), BIG_POOL);
+  const attempts = await Promise.all(
+    Array.from({ length: 10 }, () =>
+      repo.applyNftUpgrade({
+        walletAddress: WALLET,
+        network: NETWORK,
+        bonusAllocation: 25_000,
+        maxAllocation: 100_000,
+        nftCount: 1,
+      }),
+    ),
+  );
+  const upgraded = attempts.filter((a) => a.status === 'upgraded').length;
+  const alreadyApplied = attempts.filter((a) => a.status === 'already_applied').length;
+  assert.equal(upgraded, 1, 'exactly one upgrade must win');
+  assert.equal(alreadyApplied, attempts.length - 1);
+  const final = await repo.findByWallet(WALLET, NETWORK);
+  assert.ok(final);
+  assert.equal(final.allocation, 47_500);
+  assert.equal(final.nftBonus, 25_000);
+  assert.equal(final.nftBonusApplied, true);
+  await repo.close();
+});
+
+test('NFT upgrade: bonus-less snapshot remains eligible; upgraded allocation is persisted', async () => {
+  const repo = new SqliteAllocationRepository(':memory:');
+  await repo.createAllocationSnapshot(makeNonNftSnapshot(), BIG_POOL);
+  const upgraded = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(upgraded.status, 'upgraded');
+  const reloaded = await repo.findByWallet(WALLET, NETWORK);
+  assert.ok(reloaded);
+  assert.equal(reloaded.allocation, 47_500);
+  assert.equal(reloaded.baseAllocation, 22_500);
+  assert.equal(reloaded.activityScore, 75);
+  await repo.close();
+});
+
+test('NFT-upgraded wallet allocation does not decrease if the NFT is sold later', async () => {
+  const repo = new SqliteAllocationRepository(':memory:');
+  await repo.createAllocationSnapshot(makeNonNftSnapshot(), BIG_POOL);
+  const upgraded = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(upgraded.status, 'upgraded');
+  // Re-applying (as a future check would) must return the frozen upgraded value.
+  const again = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 0, // NFT now sold
+  });
+  assert.equal(again.status, 'already_applied');
+  assert.equal(again.record.allocation, 47_500);
+  await repo.close();
+});
+
+test('statistics aggregate NFT upgraded wallets and total NFT bonus', async () => {
+  const repo = new SqliteAllocationRepository(':memory:');
+  await repo.createAllocationSnapshot(makeNonNftSnapshot({ walletAddress: '0x' + 'a'.repeat(40), allocation: 22_500 }), BIG_POOL);
+  await repo.createAllocationSnapshot(makeSnapshot({ walletAddress: '0x' + 'b'.repeat(40) }), BIG_POOL);
+  const upgradedBefore = await repo.applyNftUpgrade({
+    walletAddress: '0x' + 'a'.repeat(40),
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(upgradedBefore.status, 'upgraded');
+
+  const stats = await repo.allocationStats(NETWORK);
+  assert.equal(stats.totalWallets, 2);
+  assert.equal(stats.eligibleWallets, 2);
+  assert.equal(stats.totalAllocated, 22_500 + 25_000 + 18_500);
+  assert.equal(stats.totalNftBonus, 25_000 + 2_000);
+  assert.equal(stats.nftUpgradedWallets, 1);
+
+  const listed = await repo.listAllocations(NETWORK, { limit: 10, offset: 0 });
+  assert.equal(listed.total, 2);
+  assert.equal(listed.records.length, 2);
   await repo.close();
 });

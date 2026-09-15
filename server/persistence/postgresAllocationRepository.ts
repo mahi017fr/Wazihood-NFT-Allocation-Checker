@@ -7,6 +7,9 @@
  *     wallet/network, never two)
  *   - allocation_pool_ledger a single-row-per-network lock that serializes pool
  *     budget consumption across concurrent serverless instances
+ *   - allocation_nft_upgrades one row per NFT +25,000 upgrade granted, keyed by
+ *     (wallet_address, network); its PRIMARY KEY guarantees the one-time bonus
+ *     can only ever be awarded to a wallet once, even under concurrent requests
  *
  * Concurrency:
  *   - Same wallet, simultaneous requests: the UNIQUE(wallet_address, network)
@@ -39,8 +42,13 @@ import { Pool as NeonPool } from '@neondatabase/serverless';
 import {
   type AllocationRecord,
   type AllocationRepository,
+  type AllocationStats,
+  type ApplyNftUpgradeInput,
+  type ApplyNftUpgradeOutcome,
   type CreateAllocationSnapshotInput,
   type CreateSnapshotOutcome,
+  type ListAllocationsOptions,
+  type ListAllocationsResult,
 } from './allocationRepository.js';
 
 export const POSTGRES_SCHEMA_STATEMENTS: string[] = [
@@ -53,8 +61,12 @@ export const POSTGRES_SCHEMA_STATEMENTS: string[] = [
     nft_holder_at_snapshot BOOLEAN NOT NULL DEFAULT FALSE,
     nft_count_at_snapshot BIGINT NOT NULL DEFAULT 0,
     activity_score DOUBLE PRECISION NOT NULL,
+    base_allocation BIGINT NOT NULL DEFAULT 0,
     nft_bonus BIGINT NOT NULL DEFAULT 0,
+    nft_bonus_applied BOOLEAN NOT NULL DEFAULT FALSE,
+    nft_upgrade_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_allocation_snapshots_wallet_network
       UNIQUE (wallet_address, network)
   )`,
@@ -63,6 +75,42 @@ export const POSTGRES_SCHEMA_STATEMENTS: string[] = [
     total_allocated BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (network)
   )`,
+  `CREATE TABLE IF NOT EXISTS allocation_nft_upgrades (
+    wallet_address TEXT NOT NULL,
+    network TEXT NOT NULL,
+    bonus_allocation BIGINT NOT NULL,
+    nft_count_at_upgrade BIGINT NOT NULL DEFAULT 0,
+    upgraded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (wallet_address, network)
+  )`,
+];
+
+/**
+ * Column-level upgrades that bring an existing allocation_snapshots table up to
+ * date with the NFT-upgrade fields. Column presence is detected beforehand (see
+ * ensureUpgradeColumns) so each ADD COLUMN is executed only when missing; the
+ * backfills are guarded and idempotent on every cold start.
+ *
+ * Existing finalized allocation rows are never recalculated: base_allocation is
+ * backfilled from the recorded split (allocation - nft_bonus), and rows that
+ * already received an NFT bonus (nft_bonus > 0) are marked nft_bonus_applied so
+ * the +25,000 upgrade can never be granted to them a second time. Rows without
+ * any bonus remain eligible for the one-time upgrade later.
+ */
+export const POSTGRES_UPGRADE_COLUMN_DEFINITIONS: Array<{ name: string; ddl: string }> = [
+  { name: 'base_allocation', ddl: `ALTER TABLE allocation_snapshots ADD COLUMN base_allocation BIGINT NOT NULL DEFAULT 0` },
+  { name: 'nft_bonus_applied', ddl: `ALTER TABLE allocation_snapshots ADD COLUMN nft_bonus_applied BOOLEAN NOT NULL DEFAULT FALSE` },
+  { name: 'nft_upgrade_at', ddl: `ALTER TABLE allocation_snapshots ADD COLUMN nft_upgrade_at TIMESTAMPTZ` },
+  { name: 'updated_at', ddl: `ALTER TABLE allocation_snapshots ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()` },
+];
+
+export const POSTGRES_UPGRADE_BACKFILL_STATEMENTS: string[] = [
+  `UPDATE allocation_snapshots
+      SET base_allocation = allocation - nft_bonus
+    WHERE base_allocation = 0 AND allocation >= nft_bonus`,
+  `UPDATE allocation_snapshots
+      SET nft_bonus_applied = TRUE
+    WHERE nft_bonus > 0 AND nft_bonus_applied = FALSE`,
 ];
 
 /**
@@ -165,10 +213,20 @@ function rowToRecord(row: PostgresRow): AllocationRecord {
     nftHolderAtSnapshot: Boolean(row.nft_holder_at_snapshot),
     nftCountAtSnapshot: toNumber(row.nft_count_at_snapshot),
     activityScore: toNumber(row.activity_score),
+    baseAllocation: toNumber(row.base_allocation),
     nftBonus: toNumber(row.nft_bonus),
+    nftBonusApplied: Boolean(row.nft_bonus_applied),
+    nftUpgradeAt: row.nft_upgrade_at === null || row.nft_upgrade_at === undefined ? null : toIsoDate(row.nft_upgrade_at),
     createdAt: toIsoDate(row.created_at),
+    updatedAt: toIsoDate(row.updated_at),
   };
 }
+
+const SNAPSHOT_SELECT_COLUMNS = `
+  id, wallet_address, network, allocation,
+  transaction_count_at_snapshot, nft_holder_at_snapshot,
+  nft_count_at_snapshot, activity_score, base_allocation, nft_bonus,
+  nft_bonus_applied, nft_upgrade_at, created_at, updated_at`;
 
 export function createNeonPostgresPool(databaseUrl: string): PostgresPool {
   return new NeonPool({ connectionString: databaseUrl }) as unknown as PostgresPool;
@@ -239,6 +297,37 @@ export class PostgresAllocationRepository implements AllocationRepository {
         }
       }
     }
+
+    // Bring the (possibly just-created, possibly legacy-migrated) schema up to
+    // date with the NFT-upgrade fields. Every step is a safe no-op when it has
+    // already been applied, on every cold start.
+    await this.ensureUpgradeColumns();
+  }
+
+  /**
+   * Adds the NFT-upgrade columns when missing and runs the idempotent
+   * backfills. Column presence is checked explicitly because PostgreSQL
+   * `ADD COLUMN IF NOT EXISTS` support predates some hosted providers' semantics
+   * and pg-mem, which drives the tests, does not implement the IF NOT EXISTS
+   * variant of ADD COLUMN at all.
+   */
+  private async ensureUpgradeColumns(): Promise<void> {
+    const cols = await this.pool.query(
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'allocation_snapshots'`,
+    );
+    const present = new Set(cols.rows.map((row) => String(row.column_name)));
+
+    for (const column of POSTGRES_UPGRADE_COLUMN_DEFINITIONS) {
+      if (!present.has(column.name)) {
+        await this.pool.query(column.ddl);
+      }
+    }
+
+    for (const statement of POSTGRES_UPGRADE_BACKFILL_STATEMENTS) {
+      await this.pool.query(statement);
+    }
   }
 
   async findByWallet(
@@ -247,9 +336,7 @@ export class PostgresAllocationRepository implements AllocationRepository {
   ): Promise<AllocationRecord | null> {
     await this.ensureSchema();
     const result = await this.pool.query(
-      `SELECT id, wallet_address, network, allocation,
-              transaction_count_at_snapshot, nft_holder_at_snapshot,
-              nft_count_at_snapshot, activity_score, nft_bonus, created_at
+      `SELECT ${SNAPSHOT_SELECT_COLUMNS}
          FROM allocation_snapshots
         WHERE wallet_address = $1 AND network = $2`,
       [normalizeWallet(walletAddress), network],
@@ -312,9 +399,11 @@ export class PostgresAllocationRepository implements AllocationRepository {
         `INSERT INTO allocation_snapshots (
            wallet_address, network, allocation,
            transaction_count_at_snapshot, nft_holder_at_snapshot,
-           nft_count_at_snapshot, activity_score, nft_bonus, created_at
+           nft_count_at_snapshot, activity_score, base_allocation, nft_bonus,
+           nft_bonus_applied, nft_upgrade_at, created_at, updated_at
          ) VALUES ($1, $2, $3::BIGINT, $4::BIGINT, $5::BOOLEAN, $6::BIGINT,
-                   $7::DOUBLE PRECISION, $8::BIGINT, $9::TIMESTAMPTZ)`,
+                   $7::DOUBLE PRECISION, $8::BIGINT, $9::BIGINT, $10::BOOLEAN,
+                   NULL, $11::TIMESTAMPTZ, $11::TIMESTAMPTZ)`,
         [
           walletAddress,
           input.network,
@@ -323,7 +412,9 @@ export class PostgresAllocationRepository implements AllocationRepository {
           input.nftHolderAtSnapshot,
           input.nftCountAtSnapshot,
           input.activityScore,
+          input.baseAllocation,
           input.nftBonus,
+          input.nftBonus > 0,
           new Date().toISOString(),
         ],
       );
@@ -392,6 +483,144 @@ export class PostgresAllocationRepository implements AllocationRepository {
       [network],
     );
     return result.rows.length > 0 ? toNumber(result.rows[0].count) : 0;
+  }
+
+  async applyNftUpgrade(input: ApplyNftUpgradeInput): Promise<ApplyNftUpgradeOutcome> {
+    await this.ensureSchema();
+
+    const walletAddress = normalizeWallet(input.walletAddress);
+    const bonusAllocation = Math.max(0, Math.floor(input.bonusAllocation));
+    const maxAllocation = Math.max(0, Math.floor(input.maxAllocation));
+
+    const existing = await this.findByWallet(walletAddress, input.network);
+    if (!existing) return { status: 'not_found' };
+    if (existing.nftBonusApplied) return { status: 'already_applied', record: existing };
+
+    const client = await this.pool.connect();
+    const upgradedAt = new Date().toISOString();
+    try {
+      await client.query('BEGIN');
+
+      // The one-time grant is recorded in allocation_nft_upgrades. Its
+      // PRIMARY KEY (wallet_address, network) makes exactly one of any number
+      // of concurrent requests win the INSERT; every loser hits a
+      // unique-violation (SQLSTATE 23505), rolls back and returns the winner's
+      // snapshot - the same lock-free tactic the duplicate-snapshot path uses.
+      try {
+        await client.query(
+          `INSERT INTO allocation_nft_upgrades
+             (wallet_address, network, bonus_allocation, nft_count_at_upgrade, upgraded_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [walletAddress, input.network, bonusAllocation, input.nftCount, upgradedAt],
+        );
+      } catch (error) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          // transaction may already be aborted
+        }
+        if (isUniqueViolation(error)) {
+          const winner = await this.findByWallet(walletAddress, input.network);
+          return winner
+            ? { status: 'already_applied', record: winner }
+            : { status: 'not_found' };
+        }
+        throw error;
+      }
+
+      const upgradedAllocation = Math.min(maxAllocation, existing.allocation + bonusAllocation);
+      const delta = upgradedAllocation - existing.allocation;
+
+      await client.query(
+        `UPDATE allocation_snapshots
+            SET allocation = $3::BIGINT,
+                nft_holder_at_snapshot = TRUE,
+                nft_count_at_snapshot = $4::BIGINT,
+                nft_bonus = $5::BIGINT,
+                nft_bonus_applied = TRUE,
+                nft_upgrade_at = $6::TIMESTAMPTZ,
+                updated_at = $6::TIMESTAMPTZ
+          WHERE wallet_address = $1 AND network = $2`,
+        [walletAddress, input.network, upgradedAllocation, input.nftCount, bonusAllocation, upgradedAt],
+      );
+
+      if (delta !== 0) {
+        await client.query(
+          `UPDATE allocation_pool_ledger
+              SET total_allocated = total_allocated + $1::BIGINT
+            WHERE network = $2`,
+          [delta, input.network],
+        );
+      }
+
+      await client.query('COMMIT');
+
+      const saved = await this.findByWallet(walletAddress, input.network);
+      if (!saved) {
+        throw new Error('Upgraded allocation snapshot could not be read back.');
+      }
+      return { status: 'upgraded', record: saved };
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // ignore secondary rollback failures; propagate the original error
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async listAllocations(
+    network: string,
+    options: ListAllocationsOptions,
+  ): Promise<ListAllocationsResult> {
+    await this.ensureSchema();
+    const limit = Math.max(1, Math.min(200, Math.floor(options.limit)));
+    const offset = Math.max(0, Math.floor(options.offset));
+
+    const totalResult = await this.pool.query(
+      `SELECT COUNT(*)::BIGINT AS total
+         FROM allocation_snapshots
+        WHERE network = $1`,
+      [network],
+    );
+    const total = toNumber(totalResult.rows[0]?.total);
+
+    const rows = await this.pool.query(
+      `SELECT ${SNAPSHOT_SELECT_COLUMNS}
+         FROM allocation_snapshots
+        WHERE network = $1
+        ORDER BY updated_at DESC, id DESC
+        LIMIT $2 OFFSET $3`,
+      [network, limit, offset],
+    );
+    return {
+      records: rows.rows.map(rowToRecord),
+      total,
+    };
+  }
+
+  async allocationStats(network: string): Promise<AllocationStats> {
+    await this.ensureSchema();
+    const result = await this.pool.query(
+      `SELECT COUNT(*)::BIGINT AS total_wallets,
+              COALESCE(SUM(allocation), 0)::BIGINT AS total_allocated,
+              COALESCE(SUM(nft_bonus), 0)::BIGINT AS total_nft_bonus,
+              COALESCE(SUM(CASE WHEN nft_upgrade_at IS NOT NULL THEN 1 ELSE 0 END), 0)::BIGINT AS nft_upgraded_wallets
+         FROM allocation_snapshots
+        WHERE network = $1`,
+      [network],
+    );
+    const row = result.rows[0] ?? {};
+    return {
+      totalWallets: toNumber(row.total_wallets),
+      eligibleWallets: toNumber(row.total_wallets),
+      totalAllocated: toNumber(row.total_allocated),
+      totalNftBonus: toNumber(row.total_nft_bonus),
+      nftUpgradedWallets: toNumber(row.nft_upgraded_wallets),
+    };
   }
 
   async close(): Promise<void> {

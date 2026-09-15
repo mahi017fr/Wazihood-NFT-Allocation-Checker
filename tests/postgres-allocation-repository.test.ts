@@ -51,6 +51,7 @@ function makeSnapshot(overrides: Partial<CreateAllocationSnapshotInput> = {}): C
     nftHolderAtSnapshot: true,
     nftCountAtSnapshot: 1,
     activityScore: 78,
+    baseAllocation: 16_500,
     nftBonus: 2_000,
     ...overrides,
   };
@@ -361,5 +362,187 @@ test('migration: duplicate legacy rows for one wallet collapse to a single snaps
   assert.ok(kept, 'the surviving snapshot must be retrievable');
   assert.equal(kept.allocation, 1_800, 'the most recently persisted allocation wins');
   assert.equal(await repo.totalAllocated(NETWORK), 1_800, 'ledger must reconcile to the kept snapshot');
+  await repo.close();
+});
+
+// ── NFT upgrade + new columns / migration backfill ─────────────────────────
+
+test('NFT upgrade: postgres grants the one-time bonus exactly once and persists it', async () => {
+  const repo = await makeRepo();
+  const created = await repo.createAllocationSnapshot(
+    makeSnapshot({ nftHolderAtSnapshot: false, nftCountAtSnapshot: 0, activityScore: 75, baseAllocation: 22_500, nftBonus: 0, allocation: 22_500 }),
+    BIG_POOL,
+  );
+  assert.equal(created.status, 'created');
+  assert.equal(created.record.nftBonusApplied, false);
+
+  const upgraded = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(upgraded.status, 'upgraded');
+  assert.equal(upgraded.record.allocation, 47_500);
+  assert.equal(upgraded.record.nftBonus, 25_000);
+  assert.equal(upgraded.record.baseAllocation, 22_500);
+  assert.equal(upgraded.record.nftBonusApplied, true);
+  assert.notEqual(upgraded.record.nftUpgradeAt, null);
+
+  const again = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 2,
+  });
+  assert.equal(again.status, 'already_applied');
+  assert.equal(again.record.allocation, 47_500, 'bonus must never be granted twice');
+  assert.equal(await repo.countAllocations(NETWORK), 1);
+  await repo.close();
+});
+
+test('NFT upgrade: cap at 100,000 is respected', async () => {
+  const repo = await makeRepo();
+  await repo.createAllocationSnapshot(
+    makeSnapshot({ allocation: 90_000, baseAllocation: 90_000, nftBonus: 0, nftHolderAtSnapshot: false }),
+    BIG_POOL,
+  );
+  const upgraded = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(upgraded.status, 'upgraded');
+  assert.equal(upgraded.record.allocation, 100_000);
+  assert.equal(upgraded.record.nftBonus, 25_000);
+  await repo.close();
+});
+
+test('NFT upgrade: missing wallet returns not_found', async () => {
+  const repo = await makeRepo();
+  const result = await repo.applyNftUpgrade({
+    walletAddress: '0x' + 'f'.repeat(40),
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(result.status, 'not_found');
+  await repo.close();
+});
+
+test('NFT upgrade: concurrent requests apply the bonus exactly once', async () => {
+  const repo = await makeRepo();
+  await repo.createAllocationSnapshot(
+    makeSnapshot({ nftHolderAtSnapshot: false, nftCountAtSnapshot: 0, activityScore: 75, baseAllocation: 22_500, nftBonus: 0, allocation: 22_500 }),
+    BIG_POOL,
+  );
+  const attempts = await Promise.all(
+    Array.from({ length: 10 }, () =>
+      repo.applyNftUpgrade({
+        walletAddress: WALLET,
+        network: NETWORK,
+        bonusAllocation: 25_000,
+        maxAllocation: 100_000,
+        nftCount: 1,
+      }),
+    ),
+  );
+  const upgraded = attempts.filter((a) => a.status === 'upgraded').length;
+  const alreadyApplied = attempts.filter((a) => a.status === 'already_applied').length;
+  assert.equal(upgraded, 1);
+  assert.equal(alreadyApplied, attempts.length - 1);
+  const saved = await repo.findByWallet(WALLET, NETWORK);
+  assert.ok(saved);
+  assert.equal(saved.allocation, 47_500);
+  assert.equal(saved.nftBonusApplied, true);
+  await repo.close();
+});
+
+test('I: migration preserves existing snapshots and backfills the new NFT fields idempotently', async () => {
+  const db = newDb();
+  const { Pool } = db.adapters.createPg();
+  const pool = new Pool() as unknown as PostgresPool;
+
+  // Pre-migration schema WITHOUT the new columns, with live data.
+  for (const ddl of LEGACY_SCHEMA_DDL) await pool.query(ddl);
+  await pool.query(
+    `INSERT INTO allocation_snapshots
+       (wallet_address, season, network, allocation, transaction_count_at_snapshot,
+        nft_holder_at_snapshot, nft_count_at_snapshot, activity_score, nft_bonus)
+     VALUES
+       ($1, 'Season 01', $3, 1000, 10, TRUE, 1, 50, 0),
+       ($2, 'Season 01', $3, 2000, 20, FALSE, 0, 60, 0),
+       ($4, 'Season 01', $3, 3000, 30, TRUE, 2, 70, 2500)`,
+    ['0x' + 'a'.repeat(40), '0x' + 'b'.repeat(40), NETWORK, '0x' + 'd'.repeat(40)],
+  );
+  await pool.query(
+    `INSERT INTO allocation_pool_ledger (season, network, total_allocated)
+     VALUES ('Season 01', $1, 6000)`,
+    [NETWORK],
+  );
+
+  const repo = new PostgresAllocationRepository(pool);
+  await repo.initializeSchema();
+
+  // Existing allocations are preserved exactly.
+  const a = await repo.findByWallet('0x' + 'a'.repeat(40), NETWORK);
+  const b = await repo.findByWallet('0x' + 'b'.repeat(40), NETWORK);
+  const d = await repo.findByWallet('0x' + 'd'.repeat(40), NETWORK);
+  assert.ok(a && a.allocation === 1000, 'wallet a allocation preserved');
+  assert.ok(b && b.allocation === 2000, 'wallet b allocation preserved');
+  assert.ok(d && d.allocation === 3000, 'wallet d allocation preserved');
+
+  // base_allocation is backfilled from the recorded split.
+  assert.equal(a.baseAllocation, 1000);
+  assert.equal(b.baseAllocation, 2000);
+  assert.equal(d.baseAllocation, 500, '3000 allocation minus 2500 recorded bonus');
+
+  // Rows that already had a bonus are marked applied; rows without remain eligible.
+  assert.equal(d.nftBonusApplied, true, 'already-bonused wallet must not be upgradable again');
+  assert.equal(a.nftBonusApplied, false, 'legacy holder with no bonus stays eligible for upgrade');
+  assert.equal(b.nftBonusApplied, false);
+
+  // Re-running the migration leaves everything untouched (idempotent).
+  await repo.initializeSchema();
+  await repo.initializeSchema();
+  assert.equal(await repo.countAllocations(NETWORK), 3);
+  assert.equal(await repo.totalAllocated(NETWORK), 6000);
+  const again = await repo.findByWallet('0x' + 'd'.repeat(40), NETWORK);
+  assert.ok(again && again.allocation === 3000 && again.nftBonusApplied === true);
+  await repo.close();
+});
+
+test('admin listAllocations and allocationStats return real aggregates', async () => {
+  const repo = await makeRepo();
+  await repo.createAllocationSnapshot(
+    makeSnapshot({ walletAddress: '0x' + 'a'.repeat(40), allocation: 22_500, baseAllocation: 22_500, nftHolderAtSnapshot: false, nftBonus: 0 }),
+    BIG_POOL,
+  );
+  await repo.createAllocationSnapshot(makeSnapshot({ walletAddress: '0x' + 'b'.repeat(40) }), BIG_POOL);
+  await repo.applyNftUpgrade({
+    walletAddress: '0x' + 'a'.repeat(40),
+    network: NETWORK,
+    bonusAllocation: 25_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+
+  const stats = await repo.allocationStats(NETWORK);
+  assert.equal(stats.totalWallets, 2);
+  assert.equal(stats.eligibleWallets, 2);
+  assert.equal(stats.totalAllocated, 66_000);
+  assert.equal(stats.totalNftBonus, 27_000);
+  assert.equal(stats.nftUpgradedWallets, 1);
+
+  const listed = await repo.listAllocations(NETWORK, { limit: 1, offset: 0 });
+  assert.equal(listed.total, 2);
+  assert.equal(listed.records.length, 1);
+  const listedAll = await repo.listAllocations(NETWORK, { limit: 10, offset: 0 });
+  assert.equal(listedAll.records.length, 2);
   await repo.close();
 });

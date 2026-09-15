@@ -15,14 +15,15 @@ export interface ScoreTier {
 }
 
 const DEFAULT_ACTIVITY_SCORE_TIERS: ScoreTier[] = [
-  { threshold: 1, score: 10 },
-  { threshold: 5, score: 25 },
-  { threshold: 10, score: 40 },
-  { threshold: 25, score: 55 },
-  { threshold: 50, score: 70 },
-  { threshold: 100, score: 80 },
-  { threshold: 250, score: 92 },
-  { threshold: 500, score: 100 },
+  { threshold: 1, score: 1 },
+  { threshold: 10, score: 10 },
+  { threshold: 25, score: 20 },
+  { threshold: 50, score: 30 },
+  { threshold: 100, score: 50 },
+  { threshold: 250, score: 60 },
+  { threshold: 500, score: 70 },
+  { threshold: 700, score: 80 },
+  { threshold: 1000, score: 100 },
 ];
 
 /**
@@ -94,10 +95,15 @@ export const config = {
   allocation: {
     minAllocation: toNumber(process.env.MIN_ELIGIBLE_ALLOCATION, 1),
     maxAllocation: toNumber(process.env.MAX_ELIGIBLE_ALLOCATION, 100_000),
-    maxActivityAllocation: toNumber(process.env.MAX_ACTIVITY_ALLOCATION, 30_000),
+    maxActivityAllocation: toNumber(process.env.MAX_ACTIVITY_ALLOCATION, 70_000),
     activityScoreTiers: readScoreTiers(process.env.ACTIVITY_SCORE_TIERS_JSON),
     nftHolderBonusPercent: toNumber(process.env.NFT_HOLDER_BONUS_PERCENT, 20),
-    nftHolderBonusAllocation: toNumber(process.env.NFT_HOLDER_BONUS_ALLOCATION, 0),
+    nftHolderBonusAllocation: toNumber(process.env.NFT_HOLDER_BONUS_ALLOCATION, 25_000),
+    maxNonNftAllocation: toNumber(process.env.MAX_NON_NFT_ALLOCATION, 70_000),
+  },
+
+  admin: {
+    apiKey: (process.env.ADMIN_API_KEY || '').trim(),
   },
 
   tokenomics: {

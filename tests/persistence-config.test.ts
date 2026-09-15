@@ -81,6 +81,7 @@ test('12: sqlite local store still works when selected', async () => {
       nftHolderAtSnapshot: true,
       nftCountAtSnapshot: 1,
       activityScore: 78,
+      baseAllocation: 16_500,
       nftBonus: 2_000,
     },
     300_000_000,

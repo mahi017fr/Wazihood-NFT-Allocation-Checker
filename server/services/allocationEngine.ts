@@ -6,9 +6,11 @@
  *   transactionCount === 0 → NOT eligible
  *
  * Wazi NFT ownership is BONUS information only. It never grants eligibility
- * and never takes it away. Allocation grows monotonically with real transaction
- * activity via a configurable score curve, then an optional NFT holder bonus is
- * added, and the result is clamped to the configured [1, 100,000] range.
+ * and never takes it away. Activity score is interpolated linearly between
+ * fixed anchor points (1 tx → 1 … 1000+ tx → 100), allocation is
+ * round(score/100 * 70,000) clamped to the 1–70,000 range for wallets without
+ * the NFT, and NFT holders receive exactly the configured flat bonus (+25,000)
+ * on top clamped to [1, 100,000]. More transactions never lower an allocation.
  *
  * There is intentionally NO randomness, no per-wallet hardcoding and no
  * fabricated values - everything derives from real indexer/chain inputs plus
@@ -29,8 +31,15 @@ export interface AllocationConfig {
   activityScoreTiers: ScoreTier[];
   /** Bonus percent (of the activity-based allocation) paid to NFT holders. */
   nftHolderBonusPercent: number;
-  /** Flat $WAZI bonus paid to NFT holders; used when > 0, overriding percent. */
+  /** Flat $WAZI bonus paid to NFT holders (one-time); used when > 0, overriding percent. */
   nftHolderBonusAllocation: number;
+  /**
+   * Hard per-wallet ceiling applied when the wallet does NOT hold the Wazi
+   * NFT. The activity allocation (score/100 * maxActivityAllocation) is clamped
+   * to this value, so a non-NFT wallet can never receive more than
+   * maxNonNftAllocation $WAZI, no matter how many transactions it accumulates.
+   */
+  maxNonNftAllocation: number;
 }
 
 export interface AllocationInput {
@@ -54,10 +63,28 @@ export interface AllocationResult {
 
 export const DEFAULT_MIN_ALLOCATION = 1;
 export const DEFAULT_MAX_ALLOCATION = 100_000;
+/** $WAZI awarded when a wallet's activityScore reaches 100. */
+export const DEFAULT_MAX_ACTIVITY_ALLOCATION = 70_000;
+/** Absolute per-wallet ceiling for wallets that do not hold the Wazi NFT. */
+export const DEFAULT_MAX_NON_NFT_ALLOCATION = 70_000;
+export const DEFAULT_NFT_HOLDER_BONUS_ALLOCATION = 25_000;
 export const REQUIRED_TRANSACTION_REASON = 'At least 1 Robinhood Chain transaction is required.';
 
 function isPositiveFinite(value: number): boolean {
   return Number.isFinite(value) && value > 0;
+}
+
+/**
+ * Resolves the non-NFT allocation ceiling. Falls back to the spec default
+ * (70,000) when the configuration omits the value so a non-NFT wallet can
+ * never accidentally receive an uncapped activity allocation.
+ */
+export function resolveNonNftAllocationMax(cfg: { maxNonNftAllocation?: number }): number {
+  const ceiling = cfg.maxNonNftAllocation;
+  if (Number.isFinite(ceiling) && ceiling !== undefined && ceiling > 0) {
+    return Math.floor(ceiling);
+  }
+  return DEFAULT_MAX_NON_NFT_ALLOCATION;
 }
 
 /**
@@ -111,7 +138,7 @@ export function activityScore(
 /** $WAZI allocated purely from on-chain activity. */
 export function baseAllocationFromScore(score: number, maxActivityAllocation: number): number {
   if (score <= 0) return 0;
-  return Math.floor((Math.min(100, score) / 100) * maxActivityAllocation);
+  return Math.round((Math.min(100, score) / 100) * maxActivityAllocation);
 }
 
 /**
@@ -165,7 +192,13 @@ export function evaluateAllocation(input: AllocationInput, cfg: AllocationConfig
   const score = activityScore(transactionCount, cfg.activityScoreTiers);
   const baseAllocation = baseAllocationFromScore(score, cfg.maxActivityAllocation);
   const bonus = nftBonusFor(baseAllocation, nftCount, cfg);
-  const allocation = clampAllocation(baseAllocation + bonus, cfg);
+  const allocation =
+    nftCount > 0
+      ? clampAllocation(baseAllocation + bonus, cfg)
+      : clampAllocation(baseAllocation, {
+          minAllocation: cfg.minAllocation,
+          maxAllocation: resolveNonNftAllocationMax(cfg),
+        });
 
   return {
     eligible: true,
@@ -180,12 +213,13 @@ export function evaluateAllocation(input: AllocationInput, cfg: AllocationConfig
 }
 
 const DEFAULT_ACTIVITY_SCORE_TIERS: ScoreTier[] = [
-  { threshold: 1, score: 10 },
-  { threshold: 5, score: 25 },
-  { threshold: 10, score: 40 },
-  { threshold: 25, score: 55 },
-  { threshold: 50, score: 70 },
-  { threshold: 100, score: 80 },
-  { threshold: 250, score: 92 },
-  { threshold: 500, score: 100 },
+  { threshold: 1, score: 1 },
+  { threshold: 10, score: 10 },
+  { threshold: 25, score: 20 },
+  { threshold: 50, score: 30 },
+  { threshold: 100, score: 50 },
+  { threshold: 250, score: 60 },
+  { threshold: 500, score: 70 },
+  { threshold: 700, score: 80 },
+  { threshold: 1000, score: 100 },
 ];

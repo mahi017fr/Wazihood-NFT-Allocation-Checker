@@ -73,10 +73,13 @@ test('NFT_CONTRACT_NOT_DEPLOYED renders VERIFICATION TEMPORARILY UNAVAILABLE, ne
           nftHolder: false,
           nftCount: 0,
           activityScore: 0,
+          baseAllocation: 0,
           nftBonus: 0,
           allocation: 0,
           allocationFinalized: false,
           allocationSource: 'new_calculation',
+          nftBonusApplied: false,
+          allocationUpgraded: false,
           reason: 'At least 1 Robinhood Chain transaction is required.',
         } as AllocationCheckResponse
       }
