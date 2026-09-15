@@ -29,7 +29,7 @@ async function main(): Promise<void> {
       : '<host>';
     console.log(
       `[migrate] PostgreSQL schema ready on "${host}" ` +
-        `(store=postgres, table=allocation_snapshots, ledger=allocation_pool_ledger)`,
+        `(store=postgres, tables=allocation_snapshots, allocation_pool_ledger, allocation_nft_upgrades)`,
     );
     console.log('[migrate] legacy "Season 01" schema is upgraded automatically when detected');
   } else {

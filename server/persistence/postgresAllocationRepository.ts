@@ -51,38 +51,54 @@ import {
   type ListAllocationsResult,
 } from './allocationRepository.js';
 
-export const POSTGRES_SCHEMA_STATEMENTS: string[] = [
-  `CREATE TABLE IF NOT EXISTS allocation_snapshots (
-    id BIGSERIAL PRIMARY KEY,
-    wallet_address TEXT NOT NULL,
-    network TEXT NOT NULL,
-    allocation BIGINT NOT NULL,
-    transaction_count_at_snapshot BIGINT NOT NULL,
-    nft_holder_at_snapshot BOOLEAN NOT NULL DEFAULT FALSE,
-    nft_count_at_snapshot BIGINT NOT NULL DEFAULT 0,
-    activity_score DOUBLE PRECISION NOT NULL,
-    base_allocation BIGINT NOT NULL DEFAULT 0,
-    nft_bonus BIGINT NOT NULL DEFAULT 0,
-    nft_bonus_applied BOOLEAN NOT NULL DEFAULT FALSE,
-    nft_upgrade_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_allocation_snapshots_wallet_network
-      UNIQUE (wallet_address, network)
-  )`,
-  `CREATE TABLE IF NOT EXISTS allocation_pool_ledger (
-    network TEXT NOT NULL,
-    total_allocated BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (network)
-  )`,
-  `CREATE TABLE IF NOT EXISTS allocation_nft_upgrades (
-    wallet_address TEXT NOT NULL,
-    network TEXT NOT NULL,
-    bonus_allocation BIGINT NOT NULL,
-    nft_count_at_upgrade BIGINT NOT NULL DEFAULT 0,
-    upgraded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (wallet_address, network)
-  )`,
+export interface PostgresSchemaStatement {
+  /** Table the DDL creates; used to apply only missing tables on cold start. */
+  table: string;
+  /** CREATE TABLE statement. The IF NOT EXISTS guard keeps it idempotent. */
+  ddl: string;
+}
+
+export const POSTGRES_SCHEMA_STATEMENTS: PostgresSchemaStatement[] = [
+  {
+    table: 'allocation_snapshots',
+    ddl: `CREATE TABLE IF NOT EXISTS allocation_snapshots (
+      id BIGSERIAL PRIMARY KEY,
+      wallet_address TEXT NOT NULL,
+      network TEXT NOT NULL,
+      allocation BIGINT NOT NULL,
+      transaction_count_at_snapshot BIGINT NOT NULL,
+      nft_holder_at_snapshot BOOLEAN NOT NULL DEFAULT FALSE,
+      nft_count_at_snapshot BIGINT NOT NULL DEFAULT 0,
+      activity_score DOUBLE PRECISION NOT NULL,
+      base_allocation BIGINT NOT NULL DEFAULT 0,
+      nft_bonus BIGINT NOT NULL DEFAULT 0,
+      nft_bonus_applied BOOLEAN NOT NULL DEFAULT FALSE,
+      nft_upgrade_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT uq_allocation_snapshots_wallet_network
+        UNIQUE (wallet_address, network)
+    )`,
+  },
+  {
+    table: 'allocation_pool_ledger',
+    ddl: `CREATE TABLE IF NOT EXISTS allocation_pool_ledger (
+      network TEXT NOT NULL,
+      total_allocated BIGINT NOT NULL DEFAULT 0,
+      PRIMARY KEY (network)
+    )`,
+  },
+  {
+    table: 'allocation_nft_upgrades',
+    ddl: `CREATE TABLE IF NOT EXISTS allocation_nft_upgrades (
+      wallet_address TEXT NOT NULL,
+      network TEXT NOT NULL,
+      bonus_allocation BIGINT NOT NULL,
+      nft_count_at_upgrade BIGINT NOT NULL DEFAULT 0,
+      upgraded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (wallet_address, network)
+    )`,
+  },
 ];
 
 /**
@@ -254,8 +270,8 @@ export class PostgresAllocationRepository implements AllocationRepository {
   }
 
   /**
-   * Ensures both tables exist and that any legacy "Season 01" schema has been
-   * repaired to the current season-free schema.
+   * Ensures all three tables exist and that any legacy "Season 01" schema has
+   * been repaired to the current season-free schema.
    *
    * Repairs are performed only when the legacy season column is detected, so
    * an up-to-date database is untouched on every cold start. For a legacy
@@ -263,14 +279,20 @@ export class PostgresAllocationRepository implements AllocationRepository {
    */
   private async runSchemaIfNeeded(): Promise<void> {
     const result = await this.pool.query(
-      `SELECT COUNT(*)::BIGINT AS existing
+      `SELECT table_name
          FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name IN ('allocation_snapshots', 'allocation_pool_ledger')`,
+        WHERE table_schema = 'public'`,
     );
-    if (toNumber(result.rows[0]?.existing) < 2) {
-      for (const statement of POSTGRES_SCHEMA_STATEMENTS) {
-        await this.pool.query(statement);
+    const present = new Set(result.rows.map((row) => String(row.table_name)));
+
+    // Create only the missing tables. Each statement is CREATE TABLE IF NOT
+    // EXISTS, so an older deployment that already has allocation_snapshots +
+    // allocation_pool_ledger (but not allocation_nft_upgrades) is upgraded in
+    // place by adding just the missing table. Existing rows are never dropped,
+    // reset, or rewritten, and running this repeatedly is a safe no-op.
+    for (const statement of POSTGRES_SCHEMA_STATEMENTS) {
+      if (!present.has(statement.table)) {
+        await this.pool.query(statement.ddl);
       }
     }
 

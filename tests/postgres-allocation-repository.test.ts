@@ -367,6 +367,79 @@ test('migration: duplicate legacy rows for one wallet collapse to a single snaps
 
 // ── NFT upgrade + new columns / migration backfill ─────────────────────────
 
+test('migration: a database missing allocation_nft_upgrades is repaired in place', async () => {
+  const db = newDb();
+  const { Pool } = db.adapters.createPg();
+  const pool = new Pool() as unknown as PostgresPool;
+
+  // Simulates production Neon: allocation_snapshots + allocation_pool_ledger
+  // were created by an earlier deploy, but the newer allocation_nft_upgrades
+  // table was never added - exactly the "relation does not exist" scenario.
+  await pool.query(`CREATE TABLE allocation_snapshots (
+    id BIGSERIAL PRIMARY KEY,
+    wallet_address TEXT NOT NULL,
+    network TEXT NOT NULL,
+    allocation BIGINT NOT NULL,
+    transaction_count_at_snapshot BIGINT NOT NULL,
+    nft_holder_at_snapshot BOOLEAN NOT NULL DEFAULT FALSE,
+    nft_count_at_snapshot BIGINT NOT NULL DEFAULT 0,
+    activity_score DOUBLE PRECISION NOT NULL,
+    base_allocation BIGINT NOT NULL DEFAULT 0,
+    nft_bonus BIGINT NOT NULL DEFAULT 0,
+    nft_bonus_applied BOOLEAN NOT NULL DEFAULT FALSE,
+    nft_upgrade_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_allocation_snapshots_wallet_network UNIQUE (wallet_address, network)
+  )`);
+  await pool.query(`CREATE TABLE allocation_pool_ledger (
+    network TEXT NOT NULL,
+    total_allocated BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (network)
+  )`);
+  await pool.query(
+    `INSERT INTO allocation_snapshots
+       (wallet_address, network, allocation, transaction_count_at_snapshot,
+        activity_score, base_allocation, nft_bonus)
+     VALUES ($1, $2, 22500, 42, 75, 22500, 0)`,
+    [WALLET, NETWORK],
+  );
+  assert.equal(
+    Number((await pool.query('SELECT COUNT(*)::BIGINT AS n FROM information_schema.tables WHERE table_schema = \'public\' AND table_name = \'allocation_nft_upgrades\'')).rows[0].n),
+    0,
+    'precondition: allocation_nft_upgrades must be absent before the fix',
+  );
+
+  const repo = new PostgresAllocationRepository(pool);
+  await repo.initializeSchema();
+
+  // The missing table is now created and the existing snapshot is preserved.
+  assert.equal(
+    Number((await pool.query('SELECT COUNT(*)::BIGINT AS n FROM information_schema.tables WHERE table_schema = \'public\' AND table_name = \'allocation_nft_upgrades\'')).rows[0].n),
+    1,
+    'initializeSchema must create allocation_nft_upgrades',
+  );
+  const found = await repo.findByWallet(WALLET, NETWORK);
+  assert.ok(found && found.allocation === 22_500, 'existing snapshot must be preserved');
+
+  // The NFT upgrade no longer fails with "relation ... does not exist".
+  const upgraded = await repo.applyNftUpgrade({
+    walletAddress: WALLET,
+    network: NETWORK,
+    bonusAllocation: 9_000,
+    maxAllocation: 100_000,
+    nftCount: 1,
+  });
+  assert.equal(upgraded.status, 'upgraded');
+  assert.equal(upgraded.record.allocation, 31_500);
+
+  // Re-running the migration is safe and keeps data intact.
+  await repo.initializeSchema();
+  assert.equal(await repo.countAllocations(NETWORK), 1);
+  assert.equal(await repo.totalAllocated(NETWORK), 31_500);
+  await repo.close();
+});
+
 test('NFT upgrade: postgres grants the one-time bonus exactly once and persists it', async () => {
   const repo = await makeRepo();
   const created = await repo.createAllocationSnapshot(
