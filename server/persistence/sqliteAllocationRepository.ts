@@ -108,7 +108,7 @@ export class SqliteAllocationRepository implements AllocationRepository {
    * SQLite has no `ADD COLUMN IF NOT EXISTS`, so column presence is checked via
    * PRAGMA table_info first. Existing finalized rows are preserved untouched;
    * their base_allocation is backfilled from the recorded split and rows that
-   * already received an NFT bonus are marked nft_bonus_applied (so the +25,000
+   * already received an NFT bonus are marked nft_bonus_applied (so the NFT
    * upgrade can never be granted twice).
    */
   private ensureUpgradeColumns(): void {

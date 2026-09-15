@@ -5,12 +5,10 @@
  *   transactionCount >= 1  → eligible
  *   transactionCount === 0 → NOT eligible
  *
- * Wazi NFT ownership is BONUS information only. It never grants eligibility
- * and never takes it away. Activity score is interpolated linearly between
- * fixed anchor points (1 tx → ~0.71 … 1000+ tx → 100), allocation is
- * round(score/100 * 70,000) clamped to the 1–70,000 range for wallets without
- * the NFT, and NFT holders receive exactly the configured flat bonus (+25,000)
- * on top clamped to [1, 100,000]. More transactions never lower an allocation.
+ * Wazi NFT ownership directly boosts allocation. Activity score is interpolated
+ * linearly between fixed anchor points (1 tx → ~0.71 … 1000+ tx → 100),
+ * allocation is round(score/100 * 70,000). Each Wazi NFT adds +9,000 $WAZI
+ * on top (nftCount × 9,000), clamped to the 1–100,000 range.
  *
  * There is intentionally NO randomness, no per-wallet hardcoding and no
  * fabricated values - everything derives from real indexer/chain inputs plus
@@ -31,15 +29,8 @@ export interface AllocationConfig {
   activityScoreTiers: ScoreTier[];
   /** Bonus percent (of the activity-based allocation) paid to NFT holders. */
   nftHolderBonusPercent: number;
-  /** Flat $WAZI bonus paid to NFT holders (one-time); used when > 0, overriding percent. */
+  /** Flat $WAZI bonus per NFT; each Wazi NFT adds this amount to the allocation. */
   nftHolderBonusAllocation: number;
-  /**
-   * Hard per-wallet ceiling applied when the wallet does NOT hold the Wazi
-   * NFT. The activity allocation (score/100 * maxActivityAllocation) is clamped
-   * to this value, so a non-NFT wallet can never receive more than
-   * maxNonNftAllocation $WAZI, no matter how many transactions it accumulates.
-   */
-  maxNonNftAllocation: number;
 }
 
 export interface AllocationInput {
@@ -54,7 +45,7 @@ export interface AllocationResult {
   nftCount: number;
   activityScore: number;
   baseAllocation: number;
-  /** 0 when the wallet holds no NFT. */
+  /** 0 when the wallet holds no NFT. Equals nftCount × nftHolderBonusAllocation. */
   nftBonus: number;
   /** Final per-wallet allocation, clamped to [minAllocation, maxAllocation]. 0 if not eligible. */
   allocation: number;
@@ -65,26 +56,12 @@ export const DEFAULT_MIN_ALLOCATION = 1;
 export const DEFAULT_MAX_ALLOCATION = 100_000;
 /** $WAZI awarded when a wallet's activityScore reaches 100. */
 export const DEFAULT_MAX_ACTIVITY_ALLOCATION = 70_000;
-/** Absolute per-wallet ceiling for wallets that do not hold the Wazi NFT. */
-export const DEFAULT_MAX_NON_NFT_ALLOCATION = 70_000;
-export const DEFAULT_NFT_HOLDER_BONUS_ALLOCATION = 25_000;
+/** $WAZI per Wazi NFT added to the allocation. */
+export const DEFAULT_NFT_PER_TOKEN_ALLOCATION = 9_000;
 export const REQUIRED_TRANSACTION_REASON = 'At least 1 Robinhood Chain transaction is required.';
 
 function isPositiveFinite(value: number): boolean {
   return Number.isFinite(value) && value > 0;
-}
-
-/**
- * Resolves the non-NFT allocation ceiling. Falls back to the spec default
- * (70,000) when the configuration omits the value so a non-NFT wallet can
- * never accidentally receive an uncapped activity allocation.
- */
-export function resolveNonNftAllocationMax(cfg: { maxNonNftAllocation?: number }): number {
-  const ceiling = cfg.maxNonNftAllocation;
-  if (Number.isFinite(ceiling) && ceiling !== undefined && ceiling > 0) {
-    return Math.floor(ceiling);
-  }
-  return DEFAULT_MAX_NON_NFT_ALLOCATION;
 }
 
 /**
@@ -150,21 +127,18 @@ export function baseAllocationFromScore(score: number, maxActivityAllocation: nu
 }
 
 /**
- * Optional NFT holder bonus on top of the activity allocation. Uses the flat
- * NFT_HOLDER_BONUS_ALLOCATION when defined; otherwise applies
- * NFT_HOLDER_BONUS_PERCENT to the activity allocation. Zero when no NFT held.
+ * NFT holder bonus: each Wazi NFT adds a fixed $WAZI amount on top of the
+ * activity allocation. The per-NFT amount is configured via
+ * nftHolderBonusAllocation (default 9,000). Returns 0 when no NFT held.
  */
 export function nftBonusFor(
-  baseAllocation: number,
+  _baseAllocation: number,
   nftCount: number,
-  cfg: Pick<AllocationConfig, 'nftHolderBonusPercent' | 'nftHolderBonusAllocation'>,
+  cfg: Pick<AllocationConfig, 'nftHolderBonusAllocation'>,
 ): number {
   if (nftCount <= 0) return 0;
-  if (isPositiveFinite(cfg.nftHolderBonusAllocation)) return Math.floor(cfg.nftHolderBonusAllocation);
-  if (isPositiveFinite(cfg.nftHolderBonusPercent)) {
-    return Math.floor((baseAllocation * cfg.nftHolderBonusPercent) / 100);
-  }
-  return 0;
+  const perNft = isPositiveFinite(cfg.nftHolderBonusAllocation) ? Math.floor(cfg.nftHolderBonusAllocation) : DEFAULT_NFT_PER_TOKEN_ALLOCATION;
+  return nftCount * perNft;
 }
 
 /** Clamps an eligible allocation into the configured 1–100,000 range. */
@@ -200,13 +174,7 @@ export function evaluateAllocation(input: AllocationInput, cfg: AllocationConfig
   const score = activityScore(transactionCount, cfg.activityScoreTiers);
   const baseAllocation = baseAllocationFromScore(score, cfg.maxActivityAllocation);
   const bonus = nftBonusFor(baseAllocation, nftCount, cfg);
-  const allocation =
-    nftCount > 0
-      ? clampAllocation(baseAllocation + bonus, cfg)
-      : clampAllocation(baseAllocation, {
-          minAllocation: cfg.minAllocation,
-          maxAllocation: resolveNonNftAllocationMax(cfg),
-        });
+  const allocation = clampAllocation(baseAllocation + bonus, cfg);
 
   return {
     eligible: true,

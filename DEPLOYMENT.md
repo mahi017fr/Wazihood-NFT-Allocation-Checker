@@ -39,7 +39,7 @@ allocation.
 | `ALREADY_ALLOCATED` | `0` unless tokens were already committed outside this system |
 | `MIN_ELIGIBLE_ALLOCATION` / `MAX_ELIGIBLE_ALLOCATION` / `MAX_ACTIVITY_ALLOCATION` | `1`, `100000`, `30000` |
 | `ACTIVITY_SCORE_TIERS_JSON` | `{"1":10,"5":25,"10":40,"25":55,"50":70,"100":80,"250":92,"500":100}` |
-| `NFT_HOLDER_BONUS_ALLOCATION` / `NFT_HOLDER_BONUS_PERCENT` | `0` / `20` |
+| `NFT_HOLDER_BONUS_ALLOCATION` (per-NFT bonus) / `NFT_HOLDER_BONUS_PERCENT` | `9000` / `0` |
 | `ROBINHOOD_CHAIN_ID` | `4663` |
 | `ROBINHOOD_RPC_URL` | `https://rpc.mainnet.chain.robinhood.com` |
 

@@ -209,7 +209,7 @@ export const Hero: React.FC<HeroProps> = ({
                       <span className="text-[10px] font-bold text-zinc-900">WAZI NFT BONUS</span>
                     </div>
                     <div className="text-[10px] text-zinc-600 font-medium leading-snug">
-                      Optional. Holding a Wazi NFT adds a bonus on top of your activity allocation.
+                      Each Wazi NFT adds +9,000 $WAZI on top of your activity allocation.
                     </div>
                   </div>
                 </div>

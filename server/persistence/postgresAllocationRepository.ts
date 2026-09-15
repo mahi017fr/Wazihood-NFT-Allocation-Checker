@@ -7,7 +7,7 @@
  *     wallet/network, never two)
  *   - allocation_pool_ledger a single-row-per-network lock that serializes pool
  *     budget consumption across concurrent serverless instances
- *   - allocation_nft_upgrades one row per NFT +25,000 upgrade granted, keyed by
+ *   - allocation_nft_upgrades one row per NFT upgrade granted, keyed by
  *     (wallet_address, network); its PRIMARY KEY guarantees the one-time bonus
  *     can only ever be awarded to a wallet once, even under concurrent requests
  *
@@ -94,7 +94,7 @@ export const POSTGRES_SCHEMA_STATEMENTS: string[] = [
  * Existing finalized allocation rows are never recalculated: base_allocation is
  * backfilled from the recorded split (allocation - nft_bonus), and rows that
  * already received an NFT bonus (nft_bonus > 0) are marked nft_bonus_applied so
- * the +25,000 upgrade can never be granted to them a second time. Rows without
+ * the NFT upgrade can never be granted to them a second time. Rows without
  * any bonus remain eligible for the one-time upgrade later.
  */
 export const POSTGRES_UPGRADE_COLUMN_DEFINITIONS: Array<{ name: string; ddl: string }> = [

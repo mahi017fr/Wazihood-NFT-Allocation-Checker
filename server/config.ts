@@ -99,9 +99,8 @@ export const config = {
     maxAllocation: toNumber(process.env.MAX_ELIGIBLE_ALLOCATION, 100_000),
     maxActivityAllocation: toNumber(process.env.MAX_ACTIVITY_ALLOCATION, 70_000),
     activityScoreTiers: readScoreTiers(process.env.ACTIVITY_SCORE_TIERS_JSON),
-    nftHolderBonusPercent: toNumber(process.env.NFT_HOLDER_BONUS_PERCENT, 20),
-    nftHolderBonusAllocation: toNumber(process.env.NFT_HOLDER_BONUS_ALLOCATION, 25_000),
-    maxNonNftAllocation: toNumber(process.env.MAX_NON_NFT_ALLOCATION, 70_000),
+    nftHolderBonusPercent: toNumber(process.env.NFT_HOLDER_BONUS_PERCENT, 0),
+    nftHolderBonusAllocation: toNumber(process.env.NFT_HOLDER_BONUS_ALLOCATION, 9_000),
   },
 
   admin: {

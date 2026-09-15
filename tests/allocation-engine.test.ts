@@ -34,8 +34,7 @@ const config: AllocationConfig = {
   maxActivityAllocation: 70_000,
   activityScoreTiers: TIERS,
   nftHolderBonusPercent: 0,
-  nftHolderBonusAllocation: 25_000,
-  maxNonNftAllocation: 70_000,
+  nftHolderBonusAllocation: 9_000,
 };
 
 function resultFor(nftCount: number, transactionCount: number) {
@@ -151,14 +150,7 @@ test('H2: the score curve is identical for NFT holders and non-holders', () => {
   assert.equal(resultFor(1, 5000).activityScore, 100);
 });
 
-test('H4: the non-NFT allocation ceiling is configurable via maxNonNftAllocation', () => {
-  const cfg: AllocationConfig = { ...config, maxNonNftAllocation: 55_000 };
-  const r = evaluateAllocation({ nftCount: 0, transactionCount: 5000 }, cfg);
-  assert.equal(r.activityScore, 100);
-  assert.equal(r.allocation, 55_000, 'non-NFT allocation must be clamped to maxNonNftAllocation');
-});
-
-test('H5: non-NFT allocation follows the low-activity curve up to 70,000', () => {
+test('H5: non-NFT allocation follows the activity curve up to maxActivityAllocation', () => {
   const expected: Array<[number, number]> = [
     [1, 500],
     [3, 1_500],
@@ -181,23 +173,23 @@ test('H5: non-NFT allocation follows the low-activity curve up to 70,000', () =>
   }
 });
 
-test('H6: NFT holder allocation = activity allocation + exactly 25,000, never above 100,000', () => {
+test('H6: NFT holder allocation = activity allocation + exactly 9,000 per NFT, never above 100,000', () => {
   const expected: Array<[number, number]> = [
-    [1, 25_500],
-    [100, 50_000],
-    [250, 65_000],
-    [500, 75_000],
-    [700, 85_000],
-    [1000, 95_000],
+    [1, 9_500],
+    [100, 34_000],
+    [250, 49_000],
+    [500, 59_000],
+    [700, 69_000],
+    [1000, 79_000],
   ];
   for (const [tx, allocation] of expected) {
     const r = resultFor(1, tx);
-    assert.equal(r.nftBonus, 25_000, `tx=${tx} bonus must be exactly 25,000`);
+    assert.equal(r.nftBonus, 9_000, `tx=${tx} bonus must be exactly 9,000`);
     assert.equal(r.baseAllocation, resultFor(0, tx).allocation, `tx=${tx} activity allocation`);
     assert.equal(r.allocation, allocation, `tx=${tx} NFT holder allocation`);
     assert.ok(r.allocation <= 100_000, `tx=${tx} NFT allocation exceeds 100,000`);
   }
-  assert.equal(resultFor(1, 5000).allocation, 95_000);
+  assert.equal(resultFor(1, 5000).allocation, 79_000);
 });
 
 test('piecewise-linear allocation is deterministic and matches the linear target between anchors', () => {
@@ -224,42 +216,31 @@ test('piecewise-linear allocation is deterministic and matches the linear target
   }
 });
 
-// ── New rules: flat 25,000 one-time NFT bonus ──────────────────────────────
+// ── New rules: nftCount × 9,000 NFT bonus ────────────────────────────────
 
-test('C: NFT holder allocation includes exactly the flat +25,000 bonus', () => {
+test('C: NFT holder allocation includes exactly nftCount × 9,000 bonus', () => {
   for (const tx of [1, 10, 100, 500]) {
     const r = resultFor(1, tx);
-    assert.equal(r.nftBonus, 25_000, `tx=${tx} bonus must be exactly 25,000`);
+    assert.equal(r.nftBonus, 9_000, `tx=${tx} 1-NFT bonus must be exactly 9,000`);
     assert.equal(r.allocation, r.baseAllocation + r.nftBonus);
   }
+  // Multiple NFTs scale linearly
+  const r5 = resultFor(5, 100);
+  assert.equal(r5.nftBonus, 45_000, '5 NFTs → 45,000 bonus');
+  const r10 = resultFor(10, 1000);
+  assert.equal(r10.nftBonus, 90_000, '10 NFTs → 90,000 bonus');
 });
 
-test('C2: flat NFT_HOLDER_BONUS_ALLOCATION default is 25,000', () => {
-  assert.equal(config.nftHolderBonusAllocation, 25_000);
+test('C2: per-NFT allocation default is 9,000', () => {
+  assert.equal(config.nftHolderBonusAllocation, 9_000);
 });
 
-test('C3: percent-based bonus remains as the fallback when the flat bonus is 0', () => {
-  const percentCfg: AllocationConfig = {
-    ...config,
-    nftHolderBonusAllocation: 0,
-    nftHolderBonusPercent: 20,
-  };
-  const r = evaluateAllocation({ nftCount: 1, transactionCount: 500 }, percentCfg);
-  assert.equal(r.nftBonus, Math.floor((r.baseAllocation * 20) / 100));
-  assert.ok(r.nftBonus > 0);
-});
-
-// ── New rules: non-NFT 70,000 ceiling respected under extreme config ────────
-
-test('J: a non-NFT wallet can never exceed 70,000 even with a huge score ceiling', () => {
-  const highCfg: AllocationConfig = {
-    ...config,
-    maxActivityAllocation: 10_000_000,
-  };
-  const r = evaluateAllocation({ nftCount: 0, transactionCount: 1_000_000 }, highCfg);
-  assert.equal(r.activityScore, 100, 'score reaches 100 with enough activity');
-  assert.equal(r.allocation, 70_000, 'non-NFT allocation must clamp to the 70,000 ceiling');
-  assert.ok(r.allocation <= 70_000, 'non-NFT allocation exceeds the 70,000 ceiling');
+test('C3: NFT bonus scales linearly with nftCount', () => {
+  for (const nft of [1, 2, 3, 5, 10]) {
+    const r = evaluateAllocation({ nftCount: nft, transactionCount: 100 }, config);
+    assert.equal(r.nftBonus, nft * 9_000, `${nft} NFTs → ${nft * 9_000} bonus`);
+    assert.equal(r.allocation, Math.min(100_000, r.baseAllocation + r.nftBonus));
+  }
 });
 
 // ── Test cases 5-6 from spec ────────────────────────────────────────────────
@@ -345,10 +326,10 @@ test('deterministic: same inputs always produce identical results', () => {
 
 // ── Configurable bonus ──────────────────────────────────────────────────────
 
-test('flat NFT_HOLDER_BONUS_ALLOCATION overrides the percent bonus', () => {
+test('flat NFT_HOLDER_BONUS_ALLOCATION configures the per-NFT amount', () => {
   const flatCfg: AllocationConfig = { ...config, nftHolderBonusAllocation: 1250 };
-  const r = evaluateAllocation({ nftCount: 1, transactionCount: 100 }, flatCfg);
-  assert.equal(r.nftBonus, 1250);
+  const r = evaluateAllocation({ nftCount: 3, transactionCount: 100 }, flatCfg);
+  assert.equal(r.nftBonus, 3 * 1250);
 });
 
 test('NFT bonus is zero whenever no NFT is held', () => {

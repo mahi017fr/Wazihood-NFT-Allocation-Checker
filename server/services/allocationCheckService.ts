@@ -1,7 +1,7 @@
 import { config } from '../config.js';
 import { ApiError } from '../errors.js';
 import { validateWalletAddress } from '../validation.js';
-import { evaluateAllocation, REQUIRED_TRANSACTION_REASON, type AllocationConfig } from './allocationEngine.js';
+import { evaluateAllocation, nftBonusFor, REQUIRED_TRANSACTION_REASON, type AllocationConfig } from './allocationEngine.js';
 import { getRobinhoodChainService, type RobinhoodChainService } from './robinhoodChainService.js';
 import { getWaziNftService, type WaziNftService } from './waziNftService.js';
 import type { AllocationRepository, AllocationRecord } from '../persistence/allocationRepository.js';
@@ -138,7 +138,7 @@ export class AllocationCheckService {
    * The activity-based allocation is NEVER recalculated: the exact frozen
    * snapshot is returned unchanged. The only mutation allowed is the ONE-TIME
    * NFT upgrade: when a snapshot was created without an NFT bonus and the
-   * wallet now holds the Wazi NFT, exactly the configured flat bonus (25,000)
+   * wallet now holds the Wazi NFT, the per-NFT bonus (nftCount × 9,000)
    * is added once and the snapshot is updated to the final upgraded allocation.
    * Once the bonus has been applied (whether on the first check or via the
    * upgrade path) it can never be granted or reverted again.
@@ -168,10 +168,12 @@ export class AllocationCheckService {
       return this.toResponseFromRecord(snapshot, 'snapshot');
     }
 
+    const bonus = nftBonusFor(0, nftCount, this.deps.allocationConfig);
+
     const outcome = await this.deps.repository.applyNftUpgrade({
       walletAddress,
       network,
-      bonusAllocation: this.deps.allocationConfig.nftHolderBonusAllocation,
+      bonusAllocation: bonus,
       maxAllocation: this.deps.allocationConfig.maxAllocation,
       nftCount,
     });
@@ -219,7 +221,6 @@ function defaultAllocationConfig(): AllocationConfig {
     activityScoreTiers: config.allocation.activityScoreTiers,
     nftHolderBonusPercent: config.allocation.nftHolderBonusPercent,
     nftHolderBonusAllocation: config.allocation.nftHolderBonusAllocation,
-    maxNonNftAllocation: config.allocation.maxNonNftAllocation,
   };
 }
 

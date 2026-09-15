@@ -273,7 +273,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
               </div>
               <div className="text-[11px] text-zinc-500">
                 {eligible
-                  ? 'NFT ownership is optional. Wazi NFT holders receive an additional bonus.'
+                  ? 'Each Wazi NFT you hold adds +9,000 $WAZI to your allocation.'
                   : data.reason || 'At least 1 Robinhood Chain transaction is required.'}
               </div>
             </div>
@@ -357,7 +357,7 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
             </div>
 
             <div className="pt-2 border-t border-zinc-100 text-[11px] text-zinc-500 font-mono-code">
-              1+ transaction grants eligibility. Wazi NFT holding is optional and adds a bonus.
+              1+ transaction grants eligibility. Each Wazi NFT adds +9,000 $WAZI to your allocation.
             </div>
           </div>
         </div>
@@ -543,13 +543,13 @@ export const ResultsDashboard: React.FC<ResultsDashboardProps> = ({ data, onRese
                 </span>
               </div>
               <div className="text-[11px] text-zinc-500 font-mono-code">
-                NFT count: <span className="text-[#00c805] font-bold">{data.nftCount}</span>
+                Wazi NFTs Held: <span className="text-[#00c805] font-bold">{data.nftCount}</span>
               </div>
               <div className="text-[11px] text-zinc-500 font-mono-code mt-1">
-                NFT bonus: <span className="text-zinc-900 font-semibold">+{formatNumber(data.nftBonus)} $WAZI</span>
+                NFT Allocation Bonus: <span className="text-zinc-900 font-semibold">+{formatNumber(data.nftBonus)} $WAZI</span>
               </div>
               <div className="text-[10px] text-zinc-400 font-mono-code mt-1">
-                Optional: holding adds a bonus, never required for eligibility.
+                Each Wazi NFT adds +9,000 $WAZI on top of your activity allocation.
               </div>
             </div>
 

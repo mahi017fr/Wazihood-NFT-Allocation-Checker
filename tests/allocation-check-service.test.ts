@@ -29,8 +29,7 @@ const DEFAULT_CONFIG: AllocationConfig = {
     { threshold: 1000, score: 100 },
   ],
   nftHolderBonusPercent: 0,
-  nftHolderBonusAllocation: 25_000,
-  maxNonNftAllocation: 70_000,
+  nftHolderBonusAllocation: 9_000,
 };
 
 interface BuildOptions {
@@ -281,7 +280,7 @@ test('14: transaction count changing does not change the saved allocation', asyn
   assert.equal(second.allocationSource, 'snapshot');
 });
 
-test('E: non-NFT wallet that later buys the Wazi NFT upgrades by exactly +25,000 once', async () => {
+test('E: non-NFT wallet that later buys the Wazi NFT upgrades by exactly +9,000 once', async () => {
   const repo = new SqliteAllocationRepository(':memory:');
   const nft = mutableNft(0);
   const service = new AllocationCheckService({
@@ -304,8 +303,8 @@ test('E: non-NFT wallet that later buys the Wazi NFT upgrades by exactly +25,000
   nft.set(1); // wallet later acquires the Wazi NFT
   const upgraded = await service.check(VALID_ADDRESS);
   assert.equal(upgraded.allocationSource, 'nft_upgrade');
-  assert.equal(upgraded.allocation, original + 25_000);
-  assert.equal(upgraded.nftBonus, 25_000);
+  assert.equal(upgraded.allocation, original + 9_000);
+  assert.equal(upgraded.nftBonus, 9_000);
   assert.equal(upgraded.nftBonusApplied, true);
   assert.equal(upgraded.allocationUpgraded, true);
   assert.equal(upgraded.nftHolder, true, 'snapshot must record the acquired NFT');
@@ -488,28 +487,28 @@ test('B: same wallet with more transactions and no NFT returns the exact same al
   assert.equal(second.allocationSource, 'snapshot');
 });
 
-test('C: new wallet with NFT gets exactly the flat +25,000 bonus at creation', async () => {
+test('C: new wallet with NFT gets exactly the nftCount × 9,000 bonus at creation', async () => {
   const { service, repo } = buildService({ tx: 100, nftCount: 1 });
   const r = await service.check(VALID_ADDRESS);
-  assert.equal(r.nftBonus, 25_000);
+  assert.equal(r.nftBonus, 9_000);
   assert.equal(r.nftBonusApplied, true);
   assert.equal(r.allocationUpgraded, false, 'bonus granted at first check is not an upgrade');
-  assert.equal(r.allocation, r.baseAllocation + 25_000);
+  assert.equal(r.allocation, r.baseAllocation + 9_000);
   const saved = await repo.findByWallet(LOWERCASE, NETWORK);
   assert.ok(saved);
   assert.equal(saved.allocation, r.allocation);
   assert.equal(saved.nftBonusApplied, true);
 });
 
-test('D: same NFT wallet checked again gets no second +25,000 bonus', async () => {
+test('D: same NFT wallet checked again gets no second +9,000 bonus', async () => {
   const { service } = buildService({ tx: 100, nftCount: 1 });
   const first = await service.check(VALID_ADDRESS);
-  assert.equal(first.nftBonus, 25_000);
+  assert.equal(first.nftBonus, 9_000);
   assert.equal(first.nftBonusApplied, true);
   const second = await service.check(VALID_ADDRESS);
   assert.equal(second.allocationSource, 'snapshot');
   assert.equal(second.allocation, first.allocation);
-  assert.equal(second.nftBonus, 25_000, 'must not double the bonus');
+  assert.equal(second.nftBonus, 9_000, 'must not double the bonus');
   assert.equal(second.nftBonusApplied, true);
 });
 
@@ -559,17 +558,17 @@ test('K: concurrent requests cannot apply the NFT upgrade bonus twice', async ()
   const upgrades = results.filter((r) => r.allocationSource === 'nft_upgrade').length;
   assert.equal(upgrades, 1, 'exactly one request must win the upgrade');
   for (const r of results) {
-    assert.equal(r.allocation, baseline.allocation + 25_000);
+    assert.equal(r.allocation, baseline.allocation + 9_000);
     assert.equal(r.nftBonusApplied, true);
-    assert.equal(r.nftBonus, 25_000);
+    assert.equal(r.nftBonus, 9_000);
   }
   const saved = await repo.findByWallet(LOWERCASE, NETWORK);
   assert.ok(saved);
-  assert.equal(saved.allocation, baseline.allocation + 25_000);
+  assert.equal(saved.allocation, baseline.allocation + 9_000);
   assert.equal(saved.nftBonusApplied, true);
 });
 
-test('H (service): a non-NFT wallet at 50,000 transactions scores 100 and caps at 70,000', async () => {
+test('H (service): a non-NFT wallet at 50,000 transactions scores 100 and allocates 70,000', async () => {
   const { service } = buildService({ tx: 50_000, nftCount: 0 });
   const r = await service.check('0x' + 'e'.repeat(40));
   assert.equal(r.eligible, true);
@@ -613,25 +612,25 @@ test('NEW: single transaction is the minimum for eligibility and creates the sna
   assert.equal(await repo.countAllocations(NETWORK), 1);
 });
 
-test('NEW: a new non-NFT wallet allocation never exceeds 70,000 (service level)', async () => {
+test('NEW: a new non-NFT wallet allocation never exceeds maxActivityAllocation', async () => {
   const { service } = buildService({ tx: 100_000, nftCount: 0 });
   const r = await service.check(VALID_ADDRESS);
   assert.equal(r.allocation, 70_000);
   assert.ok(r.allocation <= 70_000);
 });
 
-test('NEW: a new NFT holder allocation = activity + 25,000, capped at 100,000', async () => {
+test('NEW: a new NFT holder allocation = activity + nftCount × 9,000, capped at 100,000', async () => {
   const cases: Array<[number, number]> = [
-    [100, 50_000],
-    [250, 65_000],
-    [500, 75_000],
-    [700, 85_000],
-    [1000, 95_000],
+    [100, 34_000],
+    [250, 49_000],
+    [500, 59_000],
+    [700, 69_000],
+    [1000, 79_000],
   ];
   for (const [tx, expected] of cases) {
     const { service } = buildService({ tx, nftCount: 1 });
     const r = await service.check(`0x${tx.toString(16).padStart(40, '0')}`);
-    assert.equal(r.nftBonus, 25_000, `tx=${tx} bonus must be exactly 25,000`);
+    assert.equal(r.nftBonus, 9_000, `tx=${tx} bonus must be exactly 9,000`);
     assert.equal(r.allocation, expected, `tx=${tx} NFT holder allocation`);
     assert.ok(r.allocation <= 100_000, `tx=${tx} NFT allocation exceeds 100,000`);
   }

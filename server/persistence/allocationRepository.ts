@@ -57,7 +57,7 @@ export type CreateSnapshotOutcome =
 export interface ApplyNftUpgradeInput {
   walletAddress: string;
   network: string;
-  /** Flat one-time bonus to grant exactly once (default 25,000). */
+  /** One-time bonus to grant exactly once (nftCount × per-NFT allocation). */
   bonusAllocation: number;
   /** Absolute per-wallet allocation cap; the upgraded allocation never exceeds it. */
   maxAllocation: number;
