@@ -7,7 +7,7 @@
  *
  * Wazi NFT ownership is BONUS information only. It never grants eligibility
  * and never takes it away. Activity score is interpolated linearly between
- * fixed anchor points (1 tx → 1 … 1000+ tx → 100), allocation is
+ * fixed anchor points (1 tx → ~0.71 … 1000+ tx → 100), allocation is
  * round(score/100 * 70,000) clamped to the 1–70,000 range for wallets without
  * the NFT, and NFT holders receive exactly the configured flat bonus (+25,000)
  * on top clamped to [1, 100,000]. More transactions never lower an allocation.
@@ -129,10 +129,18 @@ export function activityScore(
     if (transactionCount >= lo.threshold && transactionCount < hi.threshold) {
       const span = hi.threshold - lo.threshold;
       const ratio = span > 0 ? (transactionCount - lo.threshold) / span : 0;
-      return Math.floor(lo.score + ratio * (hi.score - lo.score));
+      return lo.score + ratio * (hi.score - lo.score);
     }
   }
   return first.score;
+}
+
+/**
+ * Rounds a score to two decimal places for clean display and snapshot storage.
+ * The allocation calculation uses the full-precision score before this rounding.
+ */
+function roundScore(score: number): number {
+  return Math.round(score * 100) / 100;
 }
 
 /** $WAZI allocated purely from on-chain activity. */
@@ -205,7 +213,7 @@ export function evaluateAllocation(input: AllocationInput, cfg: AllocationConfig
     transactionCount,
     nftHolder,
     nftCount,
-    activityScore: score,
+    activityScore: roundScore(score),
     baseAllocation,
     nftBonus: bonus,
     allocation,
@@ -213,13 +221,15 @@ export function evaluateAllocation(input: AllocationInput, cfg: AllocationConfig
 }
 
 const DEFAULT_ACTIVITY_SCORE_TIERS: ScoreTier[] = [
-  { threshold: 1, score: 1 },
-  { threshold: 10, score: 10 },
-  { threshold: 25, score: 20 },
-  { threshold: 50, score: 30 },
-  { threshold: 100, score: 50 },
-  { threshold: 250, score: 60 },
-  { threshold: 500, score: 70 },
-  { threshold: 700, score: 80 },
+  { threshold: 1, score: 500 / 700 },
+  { threshold: 3, score: 1500 / 700 },
+  { threshold: 5, score: 2000 / 700 },
+  { threshold: 10, score: 4000 / 700 },
+  { threshold: 25, score: 8000 / 700 },
+  { threshold: 50, score: 15000 / 700 },
+  { threshold: 100, score: 25000 / 700 },
+  { threshold: 250, score: 40000 / 700 },
+  { threshold: 500, score: 50000 / 700 },
+  { threshold: 700, score: 60000 / 700 },
   { threshold: 1000, score: 100 },
 ];

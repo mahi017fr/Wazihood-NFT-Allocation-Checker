@@ -16,14 +16,16 @@ const DEFAULT_CONFIG: AllocationConfig = {
   maxAllocation: 100_000,
   maxActivityAllocation: 70_000,
   activityScoreTiers: [
-    { threshold: 1, score: 1 },
-    { threshold: 10, score: 10 },
-    { threshold: 25, score: 20 },
-    { threshold: 50, score: 30 },
-    { threshold: 100, score: 50 },
-    { threshold: 250, score: 60 },
-    { threshold: 500, score: 70 },
-    { threshold: 700, score: 80 },
+    { threshold: 1, score: 500 / 700 },
+    { threshold: 3, score: 1500 / 700 },
+    { threshold: 5, score: 2000 / 700 },
+    { threshold: 10, score: 4000 / 700 },
+    { threshold: 25, score: 8000 / 700 },
+    { threshold: 50, score: 15000 / 700 },
+    { threshold: 100, score: 25000 / 700 },
+    { threshold: 250, score: 40000 / 700 },
+    { threshold: 500, score: 50000 / 700 },
+    { threshold: 700, score: 60000 / 700 },
     { threshold: 1000, score: 100 },
   ],
   nftHolderBonusPercent: 0,
@@ -204,8 +206,8 @@ test('10: NFT bonus increases allocation for the same activity', async () => {
   const nonHolder = await buildService({ tx: 100, nftCount: 0 }).service.check(VALID_ADDRESS);
   const holder = await buildService({ tx: 100, nftCount: 1 }).service.check('0x' + 'f'.repeat(40));
   assert.equal(holder.transactionCount, nonHolder.transactionCount);
-  assert.equal(nonHolder.activityScore, 50, '100 transactions scores exactly 50');
-  assert.equal(holder.activityScore, 50, 'score is activity based and identical for both');
+  assert.equal(nonHolder.activityScore, 35.71, '100 transactions scores exactly 35.71');
+  assert.equal(holder.activityScore, 35.71, 'score is activity based and identical for both');
   assert.ok(holder.nftBonus > nonHolder.nftBonus);
   assert.ok(holder.allocation > nonHolder.allocation, 'NFT holder must receive more');
 });
@@ -456,7 +458,7 @@ test('A: new wallet without NFT gets an allocation created and frozen', async ()
   assert.equal(r.allocationFinalized, true);
   assert.equal(r.nftBonusApplied, false);
   assert.equal(r.allocationUpgraded, false);
-  assert.equal(r.activityScore, 50, '100 transactions scores exactly 50');
+  assert.equal(r.activityScore, 35.71, '100 transactions scores exactly 35.71');
   const saved = await repo.findByWallet(LOWERCASE, NETWORK);
   assert.ok(saved);
   assert.equal(saved.allocation, r.allocation);
@@ -481,7 +483,7 @@ test('B: same wallet with more transactions and no NFT returns the exact same al
   const second = await service.check(VALID_ADDRESS);
   assert.equal(second.allocation, first.allocation);
   assert.equal(second.activityScore, first.activityScore);
-  assert.equal(second.activityScore, 50);
+  assert.equal(second.activityScore, 35.71);
   assert.equal(second.transactionCount, 100, 'stored transaction count must not change');
   assert.equal(second.allocationSource, 'snapshot');
 });
@@ -578,23 +580,26 @@ test('H (service): a non-NFT wallet at 50,000 transactions scores 100 and caps a
 });
 
 test('NEW: new wallet scoring matches the anchor table (service level)', async () => {
-  const expected: Array<[number, number]> = [
-    [1, 1],
-    [10, 10],
-    [25, 20],
-    [50, 30],
-    [100, 50],
-    [250, 60],
-    [500, 70],
-    [700, 80],
-    [1000, 100],
-    [5000, 100],
+  const expected: Array<[number, number, number]> = [
+    [1, 0.71, 500],
+    [3, 2.14, 1_500],
+    [5, 2.86, 2_000],
+    [10, 5.71, 4_000],
+    [25, 11.43, 8_000],
+    [50, 21.43, 15_000],
+    [100, 35.71, 25_000],
+    [250, 57.14, 40_000],
+    [500, 71.43, 50_000],
+    [700, 85.71, 60_000],
+    [1000, 100, 70_000],
+    [5000, 100, 70_000],
   ];
-  for (const [tx, score] of expected) {
+  for (const [tx, score, allocation] of expected) {
     const { service } = buildService({ tx, nftCount: 0 });
     const r = await service.check(`0x${tx.toString(16).padStart(40, '0')}`);
     assert.equal(r.eligible, true, `tx=${tx} must be eligible`);
     assert.equal(r.activityScore, score, `tx=${tx} must score exactly ${score}`);
+    assert.equal(r.allocation, allocation, `tx=${tx} must allocate exactly ${allocation}`);
   }
 });
 
@@ -602,8 +607,8 @@ test('NEW: single transaction is the minimum for eligibility and creates the sna
   const { service, repo } = buildService({ tx: 1, nftCount: 0 });
   const r = await service.check(VALID_ADDRESS);
   assert.equal(r.eligible, true);
-  assert.equal(r.activityScore, 1);
-  assert.equal(r.allocation, 700);
+  assert.equal(r.activityScore, 0.71);
+  assert.equal(r.allocation, 500);
   assert.equal(r.allocationSource, 'new_calculation');
   assert.equal(await repo.countAllocations(NETWORK), 1);
 });
@@ -617,9 +622,10 @@ test('NEW: a new non-NFT wallet allocation never exceeds 70,000 (service level)'
 
 test('NEW: a new NFT holder allocation = activity + 25,000, capped at 100,000', async () => {
   const cases: Array<[number, number]> = [
-    [100, 60_000],
-    [500, 74_000],
-    [700, 81_000],
+    [100, 50_000],
+    [250, 65_000],
+    [500, 75_000],
+    [700, 85_000],
     [1000, 95_000],
   ];
   for (const [tx, expected] of cases) {

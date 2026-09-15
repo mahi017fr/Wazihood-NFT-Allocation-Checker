@@ -15,14 +15,16 @@ import {
 } from '../server/services/allocationEngine';
 
 const TIERS: ScoreTier[] = [
-  { threshold: 1, score: 1 },
-  { threshold: 10, score: 10 },
-  { threshold: 25, score: 20 },
-  { threshold: 50, score: 30 },
-  { threshold: 100, score: 50 },
-  { threshold: 250, score: 60 },
-  { threshold: 500, score: 70 },
-  { threshold: 700, score: 80 },
+  { threshold: 1, score: 500 / 700 },
+  { threshold: 3, score: 1500 / 700 },
+  { threshold: 5, score: 2000 / 700 },
+  { threshold: 10, score: 4000 / 700 },
+  { threshold: 25, score: 8000 / 700 },
+  { threshold: 50, score: 15000 / 700 },
+  { threshold: 100, score: 25000 / 700 },
+  { threshold: 250, score: 40000 / 700 },
+  { threshold: 500, score: 50000 / 700 },
+  { threshold: 700, score: 60000 / 700 },
   { threshold: 1000, score: 100 },
 ];
 
@@ -103,31 +105,43 @@ test('4: non-NFT + many transactions is eligible', () => {
 
 // ── New rules: deterministic anchor-based activity scoring ───────────────────
 
-test('anchor points: transaction count maps to the exact activity score', () => {
-  const expected: Array<[number, number]> = [
-    [1, 1],
-    [10, 10],
-    [25, 20],
-    [50, 30],
-    [100, 50],
-    [250, 60],
-    [500, 70],
-    [700, 80],
-    [1000, 100],
-    [5000, 100],
+test('anchor points: transaction count maps to the exact allocation', () => {
+  const expected: Array<[number, number, number]> = [
+    [1, 0.71, 500],
+    [3, 2.14, 1_500],
+    [5, 2.86, 2_000],
+    [10, 5.71, 4_000],
+    [25, 11.43, 8_000],
+    [50, 21.43, 15_000],
+    [100, 35.71, 25_000],
+    [250, 57.14, 40_000],
+    [500, 71.43, 50_000],
+    [700, 85.71, 60_000],
+    [1000, 100, 70_000],
+    [5000, 100, 70_000],
   ];
-  for (const [tx, score] of expected) {
+  for (const [tx, score, allocation] of expected) {
     const r = resultFor(0, tx);
     assert.equal(r.eligible, true, `tx=${tx} must be eligible`);
     assert.equal(r.activityScore, score, `tx=${tx} must score exactly ${score}`);
+    assert.equal(r.allocation, allocation, `tx=${tx} must allocate exactly ${allocation}`);
   }
 });
 
-test('H: activity score at 100 transactions never exceeds 50', () => {
+test('3 transactions must be around 1,500 and NOT close to 12,000', () => {
+  const r = resultFor(0, 3);
+  assert.equal(r.eligible, true);
+  assert.equal(r.activityScore, 2.14);
+  assert.equal(r.allocation, 1_500, '3 tx must map to ~1,500 $WAZI exactly');
+  assert.ok(r.allocation < 2_000, `3 tx allocation ${r.allocation} is too high for low activity`);
+  assert.ok(r.allocation < 12_000, `regression: 3 tx allocation ${r.allocation} must never be thousands of $WAZI`);
+});
+
+test('H: activity score at 100 transactions matches the 25,000 target', () => {
   for (let tx = 50; tx <= 100; tx += 1) {
     assert.ok(resultFor(0, tx).activityScore <= 50, `tx=${tx} score exceeds 50`);
   }
-  assert.equal(resultFor(0, 100).activityScore, 50);
+  assert.equal(resultFor(0, 100).activityScore, 35.71);
 });
 
 test('H2: the score curve is identical for NFT holders and non-holders', () => {
@@ -144,21 +158,24 @@ test('H4: the non-NFT allocation ceiling is configurable via maxNonNftAllocation
   assert.equal(r.allocation, 55_000, 'non-NFT allocation must be clamped to maxNonNftAllocation');
 });
 
-test('H5: non-NFT allocation = round(score/100 * 70,000), capped at 70,000', () => {
+test('H5: non-NFT allocation follows the low-activity curve up to 70,000', () => {
   const expected: Array<[number, number]> = [
-    [1, 700],
-    [10, 7_000],
-    [25, 14_000],
-    [50, 21_000],
-    [100, 35_000],
-    [250, 42_000],
-    [500, 49_000],
-    [700, 56_000],
+    [1, 500],
+    [3, 1_500],
+    [5, 2_000],
+    [10, 4_000],
+    [25, 8_000],
+    [50, 15_000],
+    [100, 25_000],
+    [250, 40_000],
+    [500, 50_000],
+    [700, 60_000],
     [1000, 70_000],
     [5000, 70_000],
   ];
   for (const [tx, allocation] of expected) {
     const r = resultFor(0, tx);
+    assert.equal(r.eligible, true, `tx=${tx} must be eligible`);
     assert.equal(r.allocation, allocation, `tx=${tx} non-NFT allocation`);
     assert.ok(r.allocation <= 70_000, `tx=${tx} non-NFT allocation exceeds 70,000`);
   }
@@ -166,9 +183,11 @@ test('H5: non-NFT allocation = round(score/100 * 70,000), capped at 70,000', () 
 
 test('H6: NFT holder allocation = activity allocation + exactly 25,000, never above 100,000', () => {
   const expected: Array<[number, number]> = [
-    [100, 60_000],
-    [500, 74_000],
-    [700, 81_000],
+    [1, 25_500],
+    [100, 50_000],
+    [250, 65_000],
+    [500, 75_000],
+    [700, 85_000],
     [1000, 95_000],
   ];
   for (const [tx, allocation] of expected) {
@@ -179,6 +198,30 @@ test('H6: NFT holder allocation = activity allocation + exactly 25,000, never ab
     assert.ok(r.allocation <= 100_000, `tx=${tx} NFT allocation exceeds 100,000`);
   }
   assert.equal(resultFor(1, 5000).allocation, 95_000);
+});
+
+test('piecewise-linear allocation is deterministic and matches the linear target between anchors', () => {
+  const cases: Array<[number, number]> = [
+    [2, 1_000], // midpoint of 1→3
+    [4, 1_750], // midpoint of 3→5
+    [7, 2_800], // 2/5 through 5→10
+    [20, 6_667], // 2/3 through 10→25
+    [200, 35_000], // 2/3 through 100→250
+    [400, 46_000], // 3/5 through 250→500
+    [600, 55_000], // midpoint of 500→700
+    [850, 65_000], // midpoint of 700→1000
+  ];
+  for (const [tx, expected] of cases) {
+    const r = resultFor(0, tx);
+    assert.ok(
+      r.allocation >= expected - 25 && r.allocation <= expected + 25,
+      `tx=${tx} allocation ${r.allocation} not near linear target ${expected}`,
+    );
+  }
+  // Same inputs always yield the exact same allocation (no randomness).
+  for (const [tx] of cases) {
+    assert.equal(resultFor(0, tx).allocation, resultFor(0, tx).allocation, `tx=${tx} must be deterministic`);
+  }
 });
 
 // ── New rules: flat 25,000 one-time NFT bonus ──────────────────────────────

@@ -15,14 +15,16 @@ export interface ScoreTier {
 }
 
 const DEFAULT_ACTIVITY_SCORE_TIERS: ScoreTier[] = [
-  { threshold: 1, score: 1 },
-  { threshold: 10, score: 10 },
-  { threshold: 25, score: 20 },
-  { threshold: 50, score: 30 },
-  { threshold: 100, score: 50 },
-  { threshold: 250, score: 60 },
-  { threshold: 500, score: 70 },
-  { threshold: 700, score: 80 },
+  { threshold: 1, score: 500 / 700 },
+  { threshold: 3, score: 1500 / 700 },
+  { threshold: 5, score: 2000 / 700 },
+  { threshold: 10, score: 4000 / 700 },
+  { threshold: 25, score: 8000 / 700 },
+  { threshold: 50, score: 15000 / 700 },
+  { threshold: 100, score: 25000 / 700 },
+  { threshold: 250, score: 40000 / 700 },
+  { threshold: 500, score: 50000 / 700 },
+  { threshold: 700, score: 60000 / 700 },
   { threshold: 1000, score: 100 },
 ];
 
